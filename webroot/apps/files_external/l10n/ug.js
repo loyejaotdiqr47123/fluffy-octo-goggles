@@ -6,7 +6,6 @@ OC.L10N.register(
     "Username" : "ئىشلەتكۈچى ئاتى",
     "Password" : "ئىم",
     "Save" : "ساقلا",
-    "Port" : "ئېغىز",
     "WebDAV" : "WebDAV",
     "URL" : "URL",
     "Location" : "ئورنى",
@@ -18,4 +17,4 @@ OC.L10N.register(
     "Configuration" : "سەپلىمە",
     "Delete" : "ئۆچۈر"
 },
-"nplurals=1; plural=0;");
+"nplurals=2; plural=(n != 1);");

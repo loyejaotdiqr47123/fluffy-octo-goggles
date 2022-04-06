@@ -32,6 +32,9 @@ use OCP\Http\Client\IClientService;
 use OCP\IRequest;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\EventDispatcher\GenericEvent;
+use OC\Files\Filesystem;
+use OCA\Files_Sharing\Helper;
+use OCP\Files;
 
 /**
  * Class ExternalSharesController
@@ -58,11 +61,13 @@ class ExternalSharesController extends Controller {
 	 * @param IClientService $clientService
 	 * @param EventDispatcherInterface $eventDispatcher
 	 */
-	public function __construct($appName,
-								IRequest $request,
-								\OCA\Files_Sharing\External\Manager $externalManager,
-								IClientService $clientService,
-								EventDispatcherInterface $eventDispatcher) {
+	public function __construct(
+		$appName,
+		IRequest $request,
+		\OCA\Files_Sharing\External\Manager $externalManager,
+		IClientService $clientService,
+		EventDispatcherInterface $eventDispatcher
+	) {
 		parent::__construct($appName, $request);
 		$this->externalManager = $externalManager;
 		$this->clientService = $clientService;
@@ -88,16 +93,25 @@ class ExternalSharesController extends Controller {
 	 */
 	public function create($id) {
 		$shareInfo = $this->externalManager->getShare($id);
-		$event = new GenericEvent(null,
-			[
-				'shareAcceptedFrom' => $shareInfo['owner'],
-				'sharedAcceptedBy' => $shareInfo['user'],
-				'sharedItem' => $shareInfo['name'],
-				'remoteUrl' => $shareInfo['remote']
-			]
-		);
-		$this->dispatcher->dispatch('remoteshare.accepted', $event);
-		$this->externalManager->acceptShare($id);
+		if ($shareInfo !== false) {
+			$mountPoint = $this->externalManager->getShareRecipientMountPoint($shareInfo);
+			$fileId = $this->externalManager->getShareFileId($shareInfo, $mountPoint);
+
+			$event = new GenericEvent(
+				null,
+				[
+					'shareAcceptedFrom' => $shareInfo['owner'],
+					'sharedAcceptedBy' => $shareInfo['user'],
+					'sharedItem' => $shareInfo['name'],
+					'remoteUrl' => $shareInfo['remote'],
+					'shareId' => $id,
+					'fileId' => $fileId,
+					'shareRecipient' => $shareInfo['user'],
+				]
+			);
+			$this->dispatcher->dispatch('remoteshare.accepted', $event);
+			$this->externalManager->acceptShare($id);
+		}
 		return new JSONResponse();
 	}
 
@@ -110,16 +124,19 @@ class ExternalSharesController extends Controller {
 	 */
 	public function destroy($id) {
 		$shareInfo = $this->externalManager->getShare($id);
-		$event = new GenericEvent(null,
-			[
-				'shareAcceptedFrom' => $shareInfo['owner'],
-				'sharedAcceptedBy' => $shareInfo['user'],
-				'sharedItem' => $shareInfo['name'],
-				'remoteUrl' => $shareInfo['remote']
-			]
-		);
-		$this->dispatcher->dispatch('remoteshare.declined', $event);
-		$this->externalManager->declineShare($id);
+		if ($shareInfo !== false) {
+			$event = new GenericEvent(
+				null,
+				[
+					'shareAcceptedFrom' => $shareInfo['owner'],
+					'sharedAcceptedBy' => $shareInfo['user'],
+					'sharedItem' => $shareInfo['name'],
+					'remoteUrl' => $shareInfo['remote']
+				]
+			);
+			$this->dispatcher->dispatch('remoteshare.declined', $event);
+			$this->externalManager->declineShare($id);
+		}
 		return new JSONResponse();
 	}
 
@@ -160,6 +177,8 @@ class ExternalSharesController extends Controller {
 	 * @return DataResponse
 	 */
 	public function testRemote($remote) {
+		// cut query and|or anchor part off
+		$remote = \strtok($remote, '?#');
 		if (
 			$this->testUrl('https://' . $remote . '/ocs-provider/') ||
 			$this->testUrl('https://' . $remote . '/ocs-provider/index.php') ||

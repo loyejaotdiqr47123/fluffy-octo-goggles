@@ -4,7 +4,7 @@
  * @author Clark Tomlinson <fallen013@gmail.com>
  * @author Thomas Müller <thomas.mueller@tmit.eu>
  *
- * @copyright Copyright (c) 2018, ownCloud GmbH
+ * @copyright Copyright (c) 2019, ownCloud GmbH
  * @license AGPL-3.0
  *
  * This code is free software: you can redistribute it and/or modify
@@ -31,10 +31,9 @@ class PrivateKeyMissingException extends GenericEncryptionException {
 	 * @param string $userId
 	 */
 	public function __construct($userId) {
-		if(empty($userId)) {
+		if (empty($userId)) {
 			$userId = "<no-user-id-given>";
 		}
 		parent::__construct("Private Key missing for user: $userId");
 	}
-
 }

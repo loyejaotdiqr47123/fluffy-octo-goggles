@@ -30,6 +30,7 @@ namespace OCA\DAV\Connector\Sabre;
 
 use OCA\DAV\DAV\FileCustomPropertiesBackend;
 use OCA\DAV\DAV\FileCustomPropertiesPlugin;
+use OCA\DAV\DAV\ViewOnlyPlugin;
 use OCA\DAV\Files\BrowserErrorPagePlugin;
 use OCA\DAV\Files\FileLocksBackend;
 use OCP\Files\Mount\IMountManager;
@@ -41,6 +42,8 @@ use OCP\ITagManager;
 use OCP\IUserSession;
 use Sabre\DAV\Auth\Backend\BackendInterface;
 use OCP\AppFramework\Utility\ITimeFactory;
+use Sabre\DAV\Exception\PreconditionFailed;
+use Sabre\HTTP\Request;
 
 class ServerFactory {
 	/** @var IConfig */
@@ -98,11 +101,13 @@ class ServerFactory {
 	 * @param bool $isPublicAccess whether DAV is accessed through a public link
 	 * @return Server
 	 */
-	public function createServer($baseUri,
-								 $requestUri,
-								 BackendInterface $authBackend,
-								 callable $viewCallBack,
-								 $isPublicAccess = false) {
+	public function createServer(
+		$baseUri,
+		$requestUri,
+		BackendInterface $authBackend,
+		callable $viewCallBack,
+		$isPublicAccess = false
+	) {
 		// Fire up server
 		$objectTree = new \OCA\DAV\Connector\Sabre\ObjectTree();
 		$server = new \OCA\DAV\Connector\Sabre\Server($objectTree);
@@ -119,18 +124,33 @@ class ServerFactory {
 		// FIXME: The following line is a workaround for legacy components relying on being able to send a GET to /
 		$server->addPlugin(new \OCA\DAV\Connector\Sabre\DummyGetResponsePlugin());
 		$server->addPlugin(new \OCA\DAV\Connector\Sabre\ExceptionLoggerPlugin('webdav', $this->logger));
-		$server->addPlugin(new \OCA\DAV\Connector\Sabre\LockPlugin());
-		$server->addPlugin(new \Sabre\DAV\Locks\Plugin(new FileLocksBackend($server->tree, true, $this->timeFactory, $isPublicAccess)));
+		$server->addPlugin(new \OCA\DAV\Connector\Sabre\LockPlugin($this->config, \OC::$server->getGroupManager()));
+
+		$fileLocksBackend = new FileLocksBackend($server->tree, true, $this->timeFactory, $isPublicAccess);
+		$server->addPlugin(new \OCA\DAV\Connector\Sabre\PublicDavLocksPlugin($fileLocksBackend, function ($uri) use ($isPublicAccess) {
+			return $isPublicAccess;
+		}));
 
 		if (BrowserErrorPagePlugin::isBrowserRequest($this->request)) {
 			$server->addPlugin(new BrowserErrorPagePlugin());
 		}
 
+		$config = $this->config;
+
+		$server->on('beforeMethod:PROPFIND', function (Request $request) use ($config) {
+			$depthHeader = strtolower($request->getHeader('depth'));
+
+			if ($depthHeader === 'infinity' && !$config->getSystemValue('dav.propfind.depth_infinity', true)) {
+				throw new PreconditionFailed('Depth infinity not supported');
+			}
+		}, 0);
+
 		// wait with registering these until auth is handled and the filesystem is setup
-		$server->on('beforeMethod', function () use ($server, $objectTree, $viewCallBack) {
+		$server->on('beforeMethod:*', function () use ($server, $objectTree, $viewCallBack) {
 			// ensure the skeleton is copied
 			// Try to obtain User Folder
 			$userFolder = \OC::$server->getUserFolder();
+			'@phan-var \OCA\DAV\Connector\Sabre\Node $userFolder';
 
 			/** @var \OC\Files\View $view */
 			$view = $viewCallBack($server);
@@ -162,6 +182,11 @@ class ServerFactory {
 			);
 			$server->addPlugin(new \OCA\DAV\Connector\Sabre\QuotaPlugin($view));
 
+			// Allow view-only plugin for webdav requests
+			$server->addPlugin(new ViewOnlyPlugin(
+				\OC::$server->getLogger()
+			));
+
 			if ($this->userSession->isLoggedIn()) {
 				$server->addPlugin(new \OCA\DAV\Connector\Sabre\TagsPlugin($objectTree, $this->tagManager));
 				$server->addPlugin(new \OCA\DAV\Connector\Sabre\SharesPlugin(
@@ -192,7 +217,8 @@ class ServerFactory {
 						new FileCustomPropertiesBackend(
 							$objectTree,
 							$this->databaseConnection,
-							$this->userSession->getUser()
+							$this->userSession->getUser(),
+							\OC::$server->getRootFolder()
 						)
 					)
 				);

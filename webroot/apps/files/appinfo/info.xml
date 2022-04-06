@@ -25,9 +25,11 @@
 	</background-jobs>
 
 	<commands>
+		<command>OCA\Files\Command\CheckCache</command>
 		<command>OCA\Files\Command\Scan</command>
 		<command>OCA\Files\Command\DeleteOrphanedFiles</command>
 		<command>OCA\Files\Command\TransferOwnership</command>
+		<command>OCA\Files\Command\TroubleshootTransferOwnership</command>
 		<command>OCA\Files\Command\VerifyChecksums</command>
 	</commands>
 

@@ -32,6 +32,7 @@ use OCA\FederatedFileSharing\AddressHandler;
 use OCA\FederatedFileSharing\FedShareManager;
 use OCA\FederatedFileSharing\Middleware\OcmMiddleware;
 use OCA\FederatedFileSharing\Ocm\Exception\BadRequestException;
+use OCA\FederatedFileSharing\Ocm\Exception\ForbiddenException;
 use OCA\FederatedFileSharing\Ocm\Exception\NotImplementedException;
 use OCA\FederatedFileSharing\Ocm\Exception\OcmException;
 use OCP\AppFramework\Http;
@@ -70,12 +71,13 @@ class RequestHandlerController extends OCSController {
 	 * @param AddressHandler $addressHandler
 	 * @param FedShareManager $fedShareManager
 	 */
-	public function __construct($appName,
-								IRequest $request,
-								OcmMiddleware $ocmMiddleware,
-								IUserManager $userManager,
-								AddressHandler $addressHandler,
-								FedShareManager $fedShareManager
+	public function __construct(
+		$appName,
+		IRequest $request,
+		OcmMiddleware $ocmMiddleware,
+		IUserManager $userManager,
+		AddressHandler $addressHandler,
+		FedShareManager $fedShareManager
 	) {
 		parent::__construct($appName, $request);
 
@@ -125,13 +127,16 @@ class RequestHandlerController extends OCSController {
 				);
 			}
 			// FIXME this should be a method in the user management instead
-			\OCP\Util::writeLog('files_sharing', 'shareWith before, ' . $shareWith, \OCP\Util::DEBUG);
+			\OCP\Util::writeLog('federatedfilesharing', 'shareWith before, ' . $shareWith, \OCP\Util::DEBUG);
+			$handled = false;
+			// the $handled var will be sent as reference so the listeners can use it as a flag
+			// in order to know if the event has been processed already or not.
 			\OCP\Util::emitHook(
 				'\OCA\Files_Sharing\API\Server2Server',
 				'preLoginNameUsedAsUserName',
-				['uid' => &$shareWith]
+				['uid' => &$shareWith, 'hasBeenHandled' => &$handled]
 			);
-			\OCP\Util::writeLog('files_sharing', 'shareWith after, ' . $shareWith, \OCP\Util::DEBUG);
+			\OCP\Util::writeLog('federatedfilesharing', 'shareWith after, ' . $shareWith, \OCP\Util::DEBUG);
 			if (!$this->userManager->userExists($shareWith)) {
 				throw new BadRequestException('User does not exist');
 			}
@@ -163,8 +168,8 @@ class RequestHandlerController extends OCSController {
 			);
 		} catch (\Exception $e) {
 			\OCP\Util::writeLog(
-				'files_sharing',
-				'server can not add remote share, ' . $e->getMessage(),
+				'federatedfilesharing',
+				'server can not add federated share, ' . $e->getMessage(),
 				\OCP\Util::ERROR
 			);
 			return new Result(
@@ -255,6 +260,18 @@ class RequestHandlerController extends OCSController {
 			$token = $this->request->getParam('token', null);
 			$share = $this->ocmMiddleware->getValidShare($id, $token);
 			$this->fedShareManager->acceptShare($share);
+		} catch (BadRequestException $e) {
+			return new Result(
+				null,
+				Http::STATUS_GONE,
+				$e->getMessage()
+			);
+		} catch (ForbiddenException $e) {
+			return new Result(
+				null,
+				Http::STATUS_FORBIDDEN,
+				$e->getMessage()
+			);
 		} catch (NotImplementedException $e) {
 			return new Result(
 				null,
@@ -281,6 +298,18 @@ class RequestHandlerController extends OCSController {
 			$this->ocmMiddleware->assertOutgoingSharingEnabled();
 			$share = $this->ocmMiddleware->getValidShare($id, $token);
 			$this->fedShareManager->declineShare($share);
+		} catch (BadRequestException $e) {
+			return new Result(
+				null,
+				Http::STATUS_GONE,
+				$e->getMessage()
+			);
+		} catch (ForbiddenException $e) {
+			return new Result(
+				null,
+				Http::STATUS_FORBIDDEN,
+				$e->getMessage()
+			);
 		} catch (NotImplementedException $e) {
 			return new Result(
 				null,
@@ -358,9 +387,15 @@ class RequestHandlerController extends OCSController {
 			$permissions = $this->request->getParam('permissions', null);
 			$token = $this->request->getParam('token', null);
 			$share = $this->ocmMiddleware->getValidShare($id, $token);
+
+			// we need to prohibit the permission update if it's not a re-share
+			if (!$this->fedShareManager->isFederatedReShare($share)) {
+				throw new \Exception("Updating the permissions is only possible on a federated re-share");
+			}
+
 			$validPermission = \ctype_digit((string)$permissions);
 			if (!$validPermission) {
-				throw new \Exception();
+				throw new \Exception("Not allowed to update the permissions");
 			}
 			$permissions = $this->ocmMiddleware->normalizePermissions(
 				(int) $permissions

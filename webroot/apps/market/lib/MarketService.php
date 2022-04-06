@@ -1,8 +1,9 @@
 <?php
 /**
  * @author Thomas Müller <thomas.mueller@tmit.eu>
+ * @author Ilja Neumann <ineumann@owncloud.com>
  *
- * @copyright Copyright (c) 2016, ownCloud GmbH
+ * @copyright Copyright (c) 2019, ownCloud GmbH
  * @license AGPL-3.0
  *
  * This code is free software: you can redistribute it and/or modify
@@ -33,6 +34,7 @@ use OCP\App\AppAlreadyInstalledException;
 use OCP\App\AppNotFoundException;
 use OCP\App\AppNotInstalledException;
 use OCP\App\AppUpdateNotFoundException;
+use OCP\Security\ISecureRandom;
 
 class MarketService {
 	/** @var HttpService */
@@ -51,6 +53,8 @@ class MarketService {
 	private $categories;
 	/** @var array */
 	private $bundles;
+	/** @var ISecureRandom  */
+	private $rng;
 
 	/**
 	 * Service constructor.
@@ -66,13 +70,15 @@ class MarketService {
 		VersionHelper $versionHelper,
 		IAppManager $appManager,
 		IConfig $config,
-		IL10N $l10n
+		IL10N $l10n,
+		ISecureRandom $rng
 	) {
 		$this->httpService = $httpService;
 		$this->versionHelper = $versionHelper;
 		$this->appManager = $appManager;
 		$this->config = $config;
 		$this->l10n = $l10n;
+		$this->rng = $rng;
 	}
 
 	/**
@@ -81,9 +87,9 @@ class MarketService {
 	 * @return bool
 	 */
 	public function canInstall() {
-		if (!method_exists($this->appManager, 'canInstall')) {
+		if (!\method_exists($this->appManager, 'canInstall')) {
 			$appsFolder = \OC_App::getInstallPath();
-			return $appsFolder !== null && is_writable($appsFolder) && is_readable($appsFolder);
+			return $appsFolder !== null && \is_writable($appsFolder) && \is_readable($appsFolder);
 		}
 		return $this->appManager->canInstall();
 	}
@@ -97,7 +103,7 @@ class MarketService {
 	 */
 	public function isAppInstalled($appId) {
 		$info = $this->getInstalledAppInfo($appId);
-		return !is_null($info);
+		return $info !== null;
 	}
 
 	/**
@@ -136,28 +142,33 @@ class MarketService {
 			throw new \Exception("Installing apps is not supported because the app folder is not writable.");
 		}
 
-		$availableReleases = array_column($this->getApps(), 'releases', 'id')[$appId];
-		if (array_shift($availableReleases)['license'] === 'ownCloud Commercial License') {
-			$license = $this->getLicenseKey();
-			if ($license === null) {
-				throw new \Exception($this->l10n->t('Please enter a license-key in to config.php'));
-			}
-			if ($appId !== 'enterprise_key') {
-				if (!$this->appManager->isEnabledForUser('enterprise_key')) {
-					throw new \Exception($this->l10n->t('Please install and enable the enterprise_key app and enter a license-key in config.php first.'));
+		$platformVersion = $this->versionHelper->getPlatformVersion(2);
+
+		// Platform versions less than 10.5 don't require enterprise-key app
+		if ($this->versionHelper->compare($platformVersion, "10.5", "<")) {
+			$availableReleases = \array_column($this->getApps(), 'releases', 'id')[$appId];
+			if (\array_shift($availableReleases)['license'] === 'ownCloud Commercial License') {
+				$license = $this->getLicenseKey();
+				if ($license === null) {
+					throw new \Exception($this->l10n->t('Please enter a license-key in to config.php'));
 				}
-				if (class_exists('\OCA\Enterprise_Key\EnterpriseKey')) {
-					$e = new \OCA\Enterprise_Key\EnterpriseKey($license, $this->config);
-					if (!$e->check()) {
-						throw new \Exception($this->l10n->t('Your license-key is not valid.'));
+				if ($appId !== 'enterprise_key') {
+					if (!$this->appManager->isEnabledForUser('enterprise_key')) {
+						throw new \Exception($this->l10n->t('Please install and enable the enterprise_key app and enter a license-key in config.php first.'));
+					}
+					if (\class_exists('\OCA\Enterprise_Key\EnterpriseKey')) {
+						$e = new \OCA\Enterprise_Key\EnterpriseKey($license, $this->config);
+						if (!$e->check()) {
+							throw new \Exception($this->l10n->t('Your license-key is not valid.'));
+						}
 					}
 				}
 			}
 		}
 
 		$info = $this->getInstalledAppInfo($appId);
-		if (!is_null($info)) {
-			throw new AppAlreadyInstalledException($this->l10n->t('App %s is already installed', $appId));
+		if ($info !== null) {
+			throw new AppAlreadyInstalledException($this->l10n->t('App %s is already installed', [$appId]));
 		}
 
 		// download package
@@ -181,8 +192,13 @@ class MarketService {
 		if ($this->appManager->isShipped($appId)) {
 			throw new AppManagerException($this->l10n->t('Shipped apps cannot be uninstalled'));
 		}
+
+		if ($appId === 'market') {
+			throw new AppManagerException($this->l10n->t('Market app can not uninstall itself.'));
+		}
+
 		if (!\OC_App::removeApp($appId)) {
-			throw new AppManagerException($this->l10n->t('App (%s) could not be uninstalled. Please check the server logs.', $appId));
+			throw new AppManagerException($this->l10n->t('App (%s) could not be uninstalled. Please check the server logs.', [$appId]));
 		}
 	}
 
@@ -190,7 +206,7 @@ class MarketService {
 	 * Update the app
 	 *
 	 * @param string $appId
-	 * @param null $targetVersion
+	 * @param string $targetVersion
 	 *
 	 * @throws AppManagerException
 	 * @throws AppNotFoundException
@@ -203,8 +219,8 @@ class MarketService {
 		}
 
 		$info = $this->getInstalledAppInfo($appId);
-		if (is_null($info)) {
-			throw new AppNotInstalledException($this->l10n->t('App (%s) is not installed', $appId));
+		if ($info === null) {
+			throw new AppNotInstalledException($this->l10n->t('App (%s) is not installed', [$appId]));
 		}
 
 		// download package
@@ -263,8 +279,9 @@ class MarketService {
 					if ($newVersions['major'] !== false
 						|| $newVersions['minor'] !== false
 					) {
-						$result[$app] = array_merge(
-							$newVersions, [ 'id' => $appId ]
+						$result[$app] = \array_merge(
+							$newVersions,
+							['id' => $appId]
 						);
 					}
 				} catch (AppNotInstalledException $e) {
@@ -272,7 +289,6 @@ class MarketService {
 				} catch (AppNotFoundException $e) {
 					// app is not published at marketplace - this is ok
 				}
-
 			}
 		}
 
@@ -284,19 +300,19 @@ class MarketService {
 	 *
 	 * @param string $appId
 	 *
-	 * @return string[]
+	 * @return string[]|bool[]
 	 *
 	 * @throws AppNotFoundException
 	 * @throws AppNotInstalledException
 	 */
 	public function getAvailableUpdateVersions($appId) {
 		$info = $this->getInstalledAppInfo($appId);
-		if (is_null($info)) {
-			throw new AppNotInstalledException($this->l10n->t('App (%s) is not installed', $appId));
+		if ($info === null) {
+			throw new AppNotInstalledException($this->l10n->t('App (%s) is not installed', [$appId]));
 		}
 		$marketInfo = $this->getAppInfo($appId);
-		if (is_null($marketInfo)) {
-			throw new AppNotFoundException($this->l10n->t('App (%s) is not known at the marketplace.', $appId));
+		if ($marketInfo === null) {
+			throw new AppNotFoundException($this->l10n->t('App (%s) is not known at the marketplace.', [$appId]));
 		}
 		$currentVersion = (string) $info['version'];
 		$major = $this->filterReleases($marketInfo, $currentVersion, true);
@@ -312,7 +328,7 @@ class MarketService {
 	 * major is chosen only if it is allowed
 	 * if it is allowed but does not exist - fallback to minor
 	 *
-	 * @param string[] $updateVersions
+	 * @param string[]|bool[] $updateVersions
 	 * @param bool $isMajorAllowed
 	 *
 	 * @return string|false
@@ -331,7 +347,7 @@ class MarketService {
 	/**
 	 * Verify if all requirements are met
 	 *
-	 * @param [] $appInfo
+	 * @param string [] $appInfo
 	 *
 	 * @return array[]
 	 */
@@ -352,7 +368,7 @@ class MarketService {
 	 */
 	public function getAppInfo($appId) {
 		$data = $this->getApps();
-		$data = array_filter(
+		$data = \array_filter(
 			$data,
 			function ($element) use ($appId) {
 				return $element['id'] === $appId;
@@ -361,7 +377,7 @@ class MarketService {
 		if (empty($data)) {
 			return null;
 		}
-		return reset($data);
+		return \reset($data);
 	}
 
 	/**
@@ -403,10 +419,10 @@ class MarketService {
 	public function listApps($category = null) {
 		$apps = $this->getApps();
 		if ($category !== null) {
-			$apps = array_filter(
+			$apps = \array_filter(
 				$apps,
 				function ($app) use ($category) {
-					return in_array($category, $app['categories']);
+					return \in_array($category, $app['categories']);
 				}
 			);
 		}
@@ -415,6 +431,32 @@ class MarketService {
 
 	public function getApiKey() {
 		return $this->httpService->getApiKey();
+	}
+
+	public function startMarketplaceLogin() {
+		$codeVerify = $this->rng->generate(
+			64,
+			ISecureRandom::CHAR_DIGITS .
+			ISecureRandom::CHAR_LOWER .
+			ISecureRandom::CHAR_UPPER
+		);
+
+		$codeChallenge = \base64_encode(\hash('sha256', $codeVerify));
+		$this->config->setAppValue('market', 'code_verify', $codeVerify);
+		$this->config->setAppValue('market', 'code_challenge', $codeChallenge);
+
+		return $codeChallenge;
+	}
+
+	public function loginViaMarketplace($loginToken) {
+		$codeVerify = $this->config->getAppValue('market', 'code_verify');
+		$apiKey = $this->httpService->exchangeLoginTokenForApiKey($loginToken, $codeVerify);
+
+		$this->setApiKey($apiKey);
+		$this->config->deleteAppValue('market', 'code_verify');
+		$this->config->deleteAppValue('market', 'code_challenge');
+
+		return $apiKey;
 	}
 
 	/**
@@ -426,6 +468,7 @@ class MarketService {
 	 */
 	public function setApiKey($apiKey) {
 		if ($this->isApiKeyChangeableByUser()) {
+			$this->config->deleteAppValue('market', 'key');
 			$this->config->setAppValue('market', 'key', $apiKey);
 			$this->httpService->invalidateCache();
 			return true;
@@ -484,7 +527,7 @@ class MarketService {
 		}
 
 		$data = $this->httpService->getDemoKey();
-		if (!array_key_exists('license_key', $data)) {
+		if (!\array_key_exists('license_key', $data)) {
 			throw new MarketException('Marketplace did not return a demo license key.');
 		}
 
@@ -505,18 +548,18 @@ class MarketService {
 	/**
 	 * Returns the version for the app if an update is available
 	 *
-	 * @param string[][] $marketInfo
+	 * @param string[][][] $marketInfo
 	 * @param string $currentVersion
 	 * @param bool $isMajorUpdate are major app updates allowed
 	 *
-	 * @return bool|string
+	 * @return string|bool
 	 *
 	 * @throws AppNotFoundException
 	 * @throws AppNotInstalledException
 	 */
 	private function filterReleases($marketInfo, $currentVersion, $isMajorUpdate) {
 		$releases = $marketInfo['releases'];
-		$releases = array_filter(
+		$releases = \array_filter(
 			$releases,
 			function ($r) use ($currentVersion, $isMajorUpdate) {
 				$marketVersion = $r['version'];
@@ -527,16 +570,17 @@ class MarketService {
 				if ($isMajorUpdate !== $isDifferentMajor) {
 					return false;
 				}
-				return version_compare($marketVersion, $currentVersion, '>');
+				return \version_compare($marketVersion, $currentVersion, '>');
 			}
 		);
-		usort(
-			$releases, function ($a, $b) {
-				return version_compare($a['version'], $b['version'], '>');
+		\usort(
+			$releases,
+			function ($a, $b) {
+				return \version_compare($a['version'], $b['version']);
 			}
 		);
 		if (!empty($releases)) {
-			return array_pop($releases)['version'];
+			return \array_pop($releases)['version'];
 		}
 		return false;
 	}
@@ -554,7 +598,7 @@ class MarketService {
 	}
 
 	private function getApps() {
-		if (!is_null($this->apps)) {
+		if ($this->apps !== null) {
 			return $this->apps;
 		}
 		$this->apps = $this->httpService->getApps();
@@ -575,11 +619,11 @@ class MarketService {
 		$this->httpService->checkInternetConnection();
 		$data = $this->getAppInfo($appId);
 		if (empty($data)) {
-			throw new AppNotFoundException($this->l10n->t('Unknown app (%s)', $appId));
+			throw new AppNotFoundException($this->l10n->t('Unknown app (%s)', [$appId]));
 		}
 
 		$version = $this->versionHelper->getPlatformVersion();
-		$release = array_filter(
+		$release = \array_filter(
 			$data['releases'],
 			function ($element) use ($version, $targetVersion) {
 				if ($targetVersion !== null
@@ -596,15 +640,15 @@ class MarketService {
 			}
 		);
 		if (empty($release)) {
-			throw new AppUpdateNotFoundException($this->l10n->t('No compatible version for %s', $appId));
+			throw new AppUpdateNotFoundException($this->l10n->t('No compatible version for %s', [$appId]));
 		}
-		usort($release, function($a, $b) {
-			return version_compare($b['version'], $a['version']);
+		\usort($release, function ($a, $b) {
+			return \version_compare($b['version'], $a['version']);
 		});
 		$release = $release[0];
 		$downloadLink = $release['download'];
 
-		$pathInfo = pathinfo($downloadLink);
+		$pathInfo = \pathinfo($downloadLink);
 		$extension = isset($pathInfo['extension']) ? '.' . $pathInfo['extension'] : '';
 		$path = \OC::$server->getTempManager()->getTemporaryFile($extension);
 		$this->httpService->downloadApp($downloadLink, $path);

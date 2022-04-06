@@ -5,11 +5,19 @@
 	"config": {
 		"vendor-dir": ".",
 		"optimize-autoloader": true,
-		"classmap-authoritative": true
+		"classmap-authoritative": true,
+		"platform": {
+			"php": "7.2"
+		}
 	},
 	"require": {
-		"icewind/smb": "3.0.0",
-		"icewind/streams": "0.5.2"
+		"php": ">=7.2",
+		"icewind/smb": "3.5.1",
+		"icewind/streams": "0.7.5",
+		"google/apiclient": "2.11.0",
+		"guzzlehttp/guzzle": "^5.3"
+	},
+	"autoload": {
+		"files": ["../lib/config.php"]
 	}
 }
-

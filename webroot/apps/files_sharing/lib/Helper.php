@@ -41,6 +41,8 @@ class Helper {
 		\OCP\Util::connectHook('OC_Filesystem', 'post_delete', '\OCA\Files_Sharing\Hooks', 'unshareChildren');
 
 		\OCP\Util::connectHook('OC_User', 'post_deleteUser', '\OCA\Files_Sharing\Hooks', 'deleteUser');
+
+		\OCP\Util::connectHook('\OCP\Config', 'js', '\OCA\Files_Sharing\Hooks', 'extendJsConfig');
 	}
 
 	/**
@@ -77,14 +79,14 @@ class Helper {
 		try {
 			$path = Filesystem::getPath($linkItem['file_source']);
 		} catch (NotFoundException $e) {
-			\OCP\Util::writeLog('share', 'could not resolve linkItem', \OCP\Util::DEBUG);
+			\OCP\Util::writeLog('files_sharing', 'could not resolve linkItem', \OCP\Util::DEBUG);
 			\OC_Response::setStatus(404);
 			\OCP\JSON::error(['success' => false]);
 			exit();
 		}
 
 		if (!isset($linkItem['item_type'])) {
-			\OCP\Util::writeLog('share', 'No item type set for share id: ' . $linkItem['id'], \OCP\Util::ERROR);
+			\OCP\Util::writeLog('files_sharing', 'No item type set for share id: ' . $linkItem['id'], \OCP\Util::ERROR);
 			\OC_Response::setStatus(404);
 			\OCP\JSON::error(['success' => false]);
 			exit();
@@ -146,7 +148,7 @@ class Helper {
 					return false;
 				}
 			} else {
-				\OCP\Util::writeLog('share', 'Unknown share type '.$linkItem['share_type']
+				\OCP\Util::writeLog('files_sharing', 'Unknown share type '.$linkItem['share_type']
 					.' for share id '.$linkItem['id'], \OCP\Util::ERROR);
 				return false;
 			}
@@ -178,7 +180,7 @@ class Helper {
 			if ($info instanceof \OC\Files\FileInfo) {
 				$ids[] = $info['fileid'];
 			} else {
-				\OCP\Util::writeLog('sharing', 'No fileinfo available for: ' . $path, \OCP\Util::WARN);
+				\OCP\Util::writeLog('files_sharing', 'No fileinfo available for: ' . $path, \OCP\Util::WARN);
 			}
 			$path = \dirname($path);
 		}
@@ -283,13 +285,23 @@ class Helper {
 		$shareFolder = Filesystem::normalizePath($shareFolder);
 
 		if (!$view->file_exists($shareFolder)) {
-			$dir = '';
-			$subdirs = \explode('/', $shareFolder);
-			foreach ($subdirs as $subdir) {
-				$dir = $dir . '/' . $subdir;
-				if (!$view->is_dir($dir)) {
-					$view->mkdir($dir);
+			$currentDir = $shareFolder;
+			$dirsToCreate = [$shareFolder];
+			while (($currentDir = \dirname($currentDir)) !== '/') {
+				// FIXME: check if there is such file as well?
+				if ($view->is_dir($currentDir)) {
+					break;
 				}
+				$dirsToCreate[] = $currentDir;
+			}
+
+			$dirsToCreate = \array_reverse($dirsToCreate);
+			$shareFolder = '/';
+			foreach ($dirsToCreate as $dirToCreate) {
+				if ($view->mkdir($dirToCreate) === false) {
+					break;
+				}
+				$shareFolder = $dirToCreate;
 			}
 		}
 

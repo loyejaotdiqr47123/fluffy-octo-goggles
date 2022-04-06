@@ -45,9 +45,11 @@ class Groups {
 	 * @param \OCP\IUserSession $userSession
 	 * @param \OCP\IRequest $request
 	 */
-	public function __construct(\OCP\IGroupManager $groupManager,
-								\OCP\IUserSession $userSession,
-								\OCP\IRequest $request) {
+	public function __construct(
+		\OCP\IGroupManager $groupManager,
+		\OCP\IUserSession $userSession,
+		\OCP\IRequest $request
+	) {
 		$this->groupManager = $groupManager;
 		$this->userSession = $userSession;
 		$this->request = $request;
@@ -103,6 +105,7 @@ class Groups {
 		$isSubadminOfGroup = false;
 		$group = $this->groupManager->get($groupId);
 		if ($group !== null) {
+			'@phan-var \OC\Group\Manager $this->groupManager';
 			$isSubadminOfGroup =$this->groupManager->getSubAdmin()->isSubAdminofGroup($user, $group);
 		}
 
@@ -178,6 +181,7 @@ class Groups {
 			return new OC_OCS_Result(null, 101, 'Group does not exist');
 		}
 
+		'@phan-var \OC\Group\Manager $this->groupManager';
 		$subadmins = $this->groupManager->getSubAdmin()->getGroupsSubAdmins($targetGroup);
 		// New class returns IUser[] so convert back
 		$uids = [];

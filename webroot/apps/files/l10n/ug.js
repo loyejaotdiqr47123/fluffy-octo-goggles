@@ -2,7 +2,6 @@ OC.L10N.register(
     "files",
     {
     "Unknown error" : "يوچۇن خاتالىق",
-    "Home" : "ئۆي",
     "Close" : "ياپ",
     "Favorites" : "يىغقۇچ",
     "Upload cancelled." : "يۈكلەشتىن ۋاز كەچتى.",
@@ -15,6 +14,7 @@ OC.L10N.register(
     "Unshare" : "ھەمبەھىرلىمە",
     "Files" : "ھۆججەتلەر",
     "Pending" : "كۈتۈۋاتىدۇ",
+    "group" : "گۇرۇپپا",
     "Name" : "ئاتى",
     "Size" : "چوڭلۇقى",
     "Modified" : "ئۆزگەرتكەن",
@@ -22,11 +22,12 @@ OC.L10N.register(
     "Favorite" : "يىغقۇچ",
     "Folder" : "قىسقۇچ",
     "New folder" : "يېڭى قىسقۇچ",
+    "Cancel" : "ۋاز كەچ",
+    "Create" : "قۇر",
     "Upload" : "يۈكلە",
-    "Save" : "ساقلا",
     "Settings" : "تەڭشەكلەر",
     "WebDAV" : "WebDAV",
     "Upload too large" : "يۈكلەندىغىنى بەك چوڭ",
     "Text file" : "تېكىست ھۆججەت"
 },
-"nplurals=1; plural=0;");
+"nplurals=2; plural=(n != 1);");

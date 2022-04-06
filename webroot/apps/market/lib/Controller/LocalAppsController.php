@@ -44,23 +44,20 @@ class LocalAppsController extends Controller {
 	 */
 	public function index($state = 'enabled') {
 		$apps = \OC_App::listAllApps();
-		$apps = array_filter($apps, function ($app) use ($state) {
+		$apps = \array_filter($apps, function ($app) use ($state) {
 			if ($state === 'enabled') {
 				return $app['active'];
 			}
 			return !$app['active'];
 		});
 
-		return array_values(array_map(function ($app) {
+		return \array_values(\array_map(function ($app) {
 			$missing = $this->getMissingDependencies($app);
 			$app['canInstall'] = empty($missing);
 			$app['missingDependencies'] = $missing;
 			$app['installed'] = true;
 			$app['updateInfo'] = [];
-//			if ($app['installed']) {
-//				$app['installInfo'] = $this->marketService->getInstalledAppInfo($app['id']);
-//				$app['updateInfo'] = $this->marketService->getAvailableUpdateVersion($app['id']);
-//			}
+
 			return $app;
 		}, $apps));
 	}

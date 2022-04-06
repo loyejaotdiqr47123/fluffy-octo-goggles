@@ -38,6 +38,7 @@ use OC\Files\Filesystem;
 use OC\Files\Storage\Storage;
 use OCA\DAV\Connector\Sabre\Exception\EntityTooLarge;
 use OCA\DAV\Connector\Sabre\Exception\FileLocked;
+use OCA\DAV\Connector\Sabre\Exception\FileNameTooLong;
 use OCA\DAV\Connector\Sabre\Exception\Forbidden as DAVForbiddenException;
 use OCA\DAV\Connector\Sabre\Exception\UnsupportedMediaType;
 use OCA\DAV\Files\IFileNode;
@@ -45,6 +46,7 @@ use OCP\Encryption\Exceptions\GenericEncryptionException;
 use OCP\Events\EventEmitterTrait;
 use OCP\Files\EntityTooLargeException;
 use OCP\Files\FileContentNotAllowedException;
+use OCP\Files\FileNameTooLongException;
 use OCP\Files\ForbiddenException;
 use OCP\Files\InvalidContentException;
 use OCP\Files\InvalidPathException;
@@ -65,7 +67,7 @@ use Symfony\Component\EventDispatcher\GenericEvent;
 class File extends Node implements IFile, IFileNode {
 	use EventEmitterTrait;
 	protected $request;
-	
+
 	/**
 	 * Sets up the node, expects a full path name
 	 *
@@ -90,7 +92,7 @@ class File extends Node implements IFile, IFileNode {
 	 */
 	private function handleMetadataUpdate(\OC\Files\Storage\Storage $targetStorage, $targetInternalPath) {
 		// since we skipped the view we need to scan and emit the hooks ourselves
-		
+
 		// allow sync clients to send the mtime along in a header
 		if (isset($this->request->server['HTTP_X_OC_MTIME'])) {
 			$mtime = $this->sanitizeMtime(
@@ -166,9 +168,9 @@ class File extends Node implements IFile, IFileNode {
 		}
 
 		list($partStorage) = $this->fileView->resolvePath($this->path);
-		$needsPartFile = $this->needsPartFile($partStorage) && (\strlen($this->path) > 1);
+		$usePartFile = $this->usePartFile($partStorage) && (\strlen($this->path) > 1);
 
-		if ($needsPartFile) {
+		if ($usePartFile) {
 			// mark file as partial while uploading (ignored by the scanner)
 			$partFilePath = $this->getPartFileBasePath($this->path) . '.ocTransferId' . \rand() . '.part';
 		} else {
@@ -185,10 +187,15 @@ class File extends Node implements IFile, IFileNode {
 			try {
 				$this->changeLock(ILockingProvider::LOCK_EXCLUSIVE);
 			} catch (LockedException $e) {
-				if ($needsPartFile) {
+				if ($usePartFile) {
 					$partStorage->unlink($internalPartPath);
 				}
 				throw new FileLocked($e->getMessage(), $e->getCode(), $e);
+			}
+
+			// check if the part file name is too long
+			if ($usePartFile) {
+				$partStorage->verifyPath($internalPartPath, \basename($internalPartPath));
 			}
 
 			$target = $partStorage->fopen($internalPartPath, 'wb');
@@ -207,7 +214,8 @@ class File extends Node implements IFile, IFileNode {
 				throw new FileLocked($e->getMessage(), $e->getCode(), $e);
 			}
 
-			if (!self::isChecksumValid($partStorage, $internalPartPath)) {
+			if (!self::isChecksumValid($this->request, $partStorage, $internalPartPath)) {
+				$partStorage->unlink($internalPartPath);  // remove the uploaded file on checksum error
 				throw new BadRequest('The computed checksum does not match the one received from the client.');
 			}
 
@@ -229,7 +237,7 @@ class File extends Node implements IFile, IFileNode {
 				}
 			}
 		} catch (\Exception $e) {
-			if ($needsPartFile) {
+			if ($usePartFile) {
 				$partStorage->unlink($internalPartPath);
 			}
 			$this->convertToSabreException($e);
@@ -250,13 +258,13 @@ class File extends Node implements IFile, IFileNode {
 			try {
 				$this->changeLock(ILockingProvider::LOCK_EXCLUSIVE);
 			} catch (LockedException $e) {
-				if ($needsPartFile) {
+				if ($usePartFile) {
 					$partStorage->unlink($internalPartPath);
 				}
 				throw new FileLocked($e->getMessage(), $e->getCode(), $e);
 			}
 
-			if ($needsPartFile) {
+			if ($usePartFile) {
 				// rename to correct path
 				try {
 					if ($run) {
@@ -475,7 +483,7 @@ class File extends Node implements IFile, IFileNode {
 	 * @throws ServiceUnavailable
 	 */
 	private function createFileChunked($data) {
-		list($path, $name) = \Sabre\HTTP\URLUtil::splitPath($this->path);
+		list($path, $name) = \Sabre\Uri\split($this->path);
 
 		$info = \OC_FileChunking::decodeName($name);
 		if (empty($info)) {
@@ -492,14 +500,15 @@ class File extends Node implements IFile, IFileNode {
 				if ($bytesWritten != $expected) {
 					$chunk_handler->remove($info['index']);
 					throw new BadRequest(
-						'expected filesize ' . $expected . ' got ' . $bytesWritten);
+						'expected filesize ' . $expected . ' got ' . $bytesWritten
+					);
 				}
 			}
 		}
 
 		if ($chunk_handler->isComplete()) {
 			list($storage, ) = $this->fileView->resolvePath($path);
-			$needsPartFile = $this->needsPartFile($storage);
+			$usePartFile = $this->usePartFile($storage);
 			$partFile = null;
 
 			$targetPath = $path . '/' . $info['name'];
@@ -526,7 +535,7 @@ class File extends Node implements IFile, IFileNode {
 				/** @var \OC\Files\Storage\Storage $targetStorage */
 				list($targetStorage, $targetInternalPath) = $this->fileView->resolvePath($targetPath);
 
-				if ($needsPartFile) {
+				if ($usePartFile) {
 					// we first assembly the target file as a part file
 					$partFile = $this->getPartFileBasePath($path . '/' . $info['name']) . '.ocTransferId' . $info['transferid'] . '.part';
 					/** @var \OC\Files\Storage\Storage $targetStorage */
@@ -534,7 +543,8 @@ class File extends Node implements IFile, IFileNode {
 
 					$chunk_handler->file_assemble($partStorage, $partInternalPath);
 
-					if (!self::isChecksumValid($partStorage, $partInternalPath)) {
+					if (!self::isChecksumValid($this->request, $partStorage, $partInternalPath)) {
+						$partStorage->unlink($partInternalPath);  // remove the uploaded file on checksum error
 						throw new BadRequest('The computed checksum does not match the one received from the client.');
 					}
 
@@ -568,10 +578,11 @@ class File extends Node implements IFile, IFileNode {
 				$info = $this->fileView->getFileInfo($targetPath);
 
 				if (isset($partStorage, $partInternalPath)) {
-					$checksums = $partStorage->getMetaData($partInternalPath)['checksum'];
+					$metadata = $partStorage->getMetaData($partInternalPath);
 				} else {
-					$checksums = $targetStorage->getMetaData($targetInternalPath)['checksum'];
+					$metadata = $targetStorage->getMetaData($targetInternalPath);
 				}
+				$checksums = (isset($metadata['checksum'])) ? $metadata['checksum'] : null;
 
 				$this->fileView->putFileInfo(
 					$targetPath,
@@ -610,9 +621,8 @@ class File extends Node implements IFile, IFileNode {
 	 * @param $path
 	 * @return bool
 	 */
-	private static function isChecksumValid(Storage $storage, $path) {
+	private static function isChecksumValid(Request $request, Storage $storage, $path) {
 		$meta = $storage->getMetaData($path);
-		$request = \OC::$server->getRequest();
 
 		if (!isset($request->server['HTTP_OC_CHECKSUM']) || !isset($meta['checksum'])) {
 			// No comparison possible, skip the check
@@ -631,14 +641,11 @@ class File extends Node implements IFile, IFileNode {
 	 * target storage.
 	 *
 	 * @param \OCP\Files\Storage $storage
-	 * @return bool true if the storage needs part file handling
+	 * @return bool true if the storage uses part file handling
 	 */
-	private function needsPartFile($storage) {
+	private function usePartFile($storage) {
 		// TODO: in the future use ChunkHandler provided by storage
-		// and/or add method on Storage called "needsPartFile()"
-		return !$storage->instanceOfStorage('OCA\Files_Sharing\External\Storage') &&
-			!$storage->instanceOfStorage('OCA\Files_external\Lib\Storage\OwnCloud') &&
-			!$storage->instanceOfStorage('OC\Files\ObjectStore\ObjectStoreStorage');
+		return $storage->usePartFile();
 	}
 
 	/**
@@ -672,6 +679,9 @@ class File extends Node implements IFile, IFileNode {
 			// the file content is not permitted
 			throw new UnsupportedMediaType($e->getMessage(), 0, $e);
 		}
+		if ($e instanceof FileNameTooLongException) {
+			throw new FileNameTooLong($e->getMessage(), 0, $e);
+		}
 		if ($e instanceof InvalidPathException) {
 			// the path for the file was not valid
 			// TODO: find proper http status code for this case
@@ -694,7 +704,7 @@ class File extends Node implements IFile, IFileNode {
 
 	/**
 	 * Set $algo to get a specific checksum, leave null to get all checksums
-	 * (space seperated)
+	 * (space separated)
 	 * @param null $algo
 	 * @return string
 	 */

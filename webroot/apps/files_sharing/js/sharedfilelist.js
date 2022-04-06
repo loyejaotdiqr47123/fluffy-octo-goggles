@@ -93,7 +93,7 @@
 			if (this._linksOnly) {
 				var expirationTimestamp = 0;
 				if(fileData.shares && fileData.shares[0].expiration !== null) {
-					expirationTimestamp = moment(fileData.shares[0].expiration).valueOf();
+					expirationTimestamp = moment(fileData.shares[0].expiration).endOf('day').valueOf();
 				}
 				$tr.attr('data-expiration', expirationTimestamp);
 
@@ -229,6 +229,13 @@
 			if (this._sharedWithUser) {
 				requestData.shared_with_me = true;
 				requestData.state = 'all';
+				requestData.share_types = [
+					OC.Share.SHARE_TYPE_USER,
+					OC.Share.SHARE_TYPE_GROUP,
+					OC.Share.SHARE_TYPE_REMOTE
+				].join(',');
+			} else if (this._linksOnly) {
+				requestData.share_types = [OC.Share.SHARE_TYPE_LINK].join(',');
 			}
 			requestData.include_tags = true;
 			var shares = $.ajax({
@@ -244,7 +251,7 @@
 
 			if (!!this._sharedWithUser) {
 				var remoteShares = $.ajax({
-					url: OC.linkToOCS('apps/files_sharing/api/v1') + 'remote_shares',
+					url: OC.linkToOCS('apps/files_sharing/api/v1') + 'remote_shares/all',
 					/* jshint camelcase: false */
 					data: {
 						format: 'json',
@@ -339,7 +346,7 @@
 				.map(function(share) {
 					var file = {
 						shareOwner: share.owner + '@' + share.remote.replace(/.*?:\/\//g, ""),
-						shareState: share.accepted ? OC.Share.STATE_ACCEPTED : OC.Share.STATE_PENDING,
+						shareState: !!parseInt(share.accepted, 10) ? OC.Share.STATE_ACCEPTED : OC.Share.STATE_PENDING,
 						name: OC.basename(share.mountpoint),
 						mtime: share.mtime * 1000,
 						mimetype: share.mimetype,
@@ -484,7 +491,7 @@
 					);
 					delete data.recipientsCount;
 					if (self._sharedWithUser) {
-						// only for outgoing shres
+						// only for outgoing shares
 						delete data.shareTypes;
 					} else {
 						data.shareTypes = _.keys(data.shareTypes);

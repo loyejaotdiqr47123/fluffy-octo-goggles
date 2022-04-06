@@ -4,7 +4,7 @@
  * @author Clark Tomlinson <fallen013@gmail.com>
  * @author Thomas Müller <thomas.mueller@tmit.eu>
  *
- * @copyright Copyright (c) 2018, ownCloud GmbH
+ * @copyright Copyright (c) 2019, ownCloud GmbH
  * @license AGPL-3.0
  *
  * This code is free software: you can redistribute it and/or modify
@@ -22,7 +22,6 @@
  */
 namespace OCA\Encryption\AppInfo;
 
-
 use OC\Files\View;
 use OC\Helper\EnvironmentHelper;
 use OCA\Encryption\Controller\RecoveryController;
@@ -39,12 +38,11 @@ use OCA\Encryption\Recovery;
 use OCA\Encryption\Session;
 use OCA\Encryption\Users\Setup;
 use OCA\Encryption\Util;
-use OCP\App;
+use OCA\Encryption\Crypto\CryptHSM;
 use OCP\AppFramework\IAppContainer;
 use OCP\Encryption\IManager;
 use OCP\IConfig;
 use Symfony\Component\Console\Helper\QuestionHelper;
-
 
 class Application extends \OCP\AppFramework\App {
 
@@ -62,7 +60,7 @@ class Application extends \OCP\AppFramework\App {
 		$this->encryptionManager = \OC::$server->getEncryptionManager();
 		$this->config = \OC::$server->getConfig();
 		$this->registerServices();
-		if($encryptionSystemReady === false) {
+		if ($encryptionSystemReady === false) {
 			/** @var Session $session */
 			$session = $this->getContainer()->query('Session');
 			$session->setStatus(Session::RUN_MIGRATION);
@@ -80,7 +78,6 @@ class Application extends \OCP\AppFramework\App {
 
 	public function registerHooks() {
 		if (!$this->config->getSystemValue('maintenance', false)) {
-
 			$container = $this->getContainer();
 			$server = $container->getServer();
 			// Register our hooks and fire them.
@@ -95,11 +92,12 @@ class Application extends \OCP\AppFramework\App {
 					$container->query('Util'),
 					$container->query('Session'),
 					$container->query('Crypt'),
-					$container->query('Recovery'), $server->getConfig())
+					$container->query('Recovery'),
+					$server->getConfig(),
+					$server->getEventDispatcher())
 			]);
 
 			$hookManager->fireHooks();
-
 		} else {
 			// Logout user if we are in maintenance to force re-login
 			$this->getContainer()->getServer()->getUserSession()->logout();
@@ -109,13 +107,11 @@ class Application extends \OCP\AppFramework\App {
 	public function registerEncryptionModule() {
 		$container = $this->getContainer();
 
-
 		$this->encryptionManager->registerEncryptionModule(
 			Encryption::ID,
 			Encryption::DISPLAY_NAME,
-			function() use ($container) {
-
-			return new Encryption(
+			function () use ($container) {
+				return new Encryption(
 				$container->query('Crypt'),
 				$container->query('KeyManager'),
 				$container->query('Util'),
@@ -125,8 +121,7 @@ class Application extends \OCP\AppFramework\App {
 				$container->getServer()->getLogger(),
 				$container->getServer()->getL10N($container->getAppName())
 			);
-		});
-
+			});
 	}
 
 	public function registerServices() {
@@ -134,11 +129,27 @@ class Application extends \OCP\AppFramework\App {
 
 		$container->registerService('Crypt',
 			function (IAppContainer $c) {
+				/** @var \OC\Server $server */
 				$server = $c->getServer();
-				return new Crypt($server->getLogger(),
-					$server->getUserSession(),
-					$server->getConfig(),
-					$server->getL10N($c->getAppName()));
+
+				if ($this->config->getAppValue('encryption', 'hsm.url', '') !== '') {
+					$this->config->setAppValue('crypto.engine', 'internal', 'hsm');
+				}
+
+				if ($this->config->getAppValue('crypto.engine', 'internal', '') === 'hsm') {
+					return new CryptHSM($server->getLogger(),
+						$server->getUserSession(),
+						$server->getConfig(),
+						$server->getL10N($c->getAppName()),
+						$server->getHTTPClientService(),
+						$server->getRequest(),
+						$server->getTimeFactory());
+				} else {
+					return new Crypt($server->getLogger(),
+						$server->getUserSession(),
+						$server->getConfig(),
+						$server->getL10N($c->getAppName()));
+				}
 			});
 
 		$container->registerService('Session',
@@ -266,9 +277,8 @@ class Application extends \OCP\AppFramework\App {
 				);
 			}
 		);
-		$container->registerService('OCP\Encryption\Keys\IStorage', function(IAppContainer $c) {
+		$container->registerService('OCP\Encryption\Keys\IStorage', function (IAppContainer $c) {
 			return $c->getServer()->getEncryptionKeyStorage();
 		});
 	}
-
 }

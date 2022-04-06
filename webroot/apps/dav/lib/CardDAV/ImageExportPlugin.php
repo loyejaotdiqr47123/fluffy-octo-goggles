@@ -80,6 +80,7 @@ class ImageExportPlugin extends ServerPlugin {
 		// Checking ACL, if available.
 		if ($aclPlugin = $this->server->getPlugin('acl')) {
 			/** @var \Sabre\DAVACL\Plugin $aclPlugin */
+			'@phan-var \Sabre\DAVACL\Plugin $aclPlugin';
 			$aclPlugin->checkPrivileges($path, '{DAV:}read');
 		}
 
@@ -110,7 +111,7 @@ class ImageExportPlugin extends ServerPlugin {
 
 			$val = $photo->getValue();
 			if ($photo->getValueType() === 'URI') {
-				$parsed = \Sabre\URI\parse($val);
+				$parsed = \Sabre\Uri\parse($val);
 				//only allow data://
 				if ($parsed['scheme'] !== 'data') {
 					return false;

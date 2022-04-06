@@ -36,6 +36,7 @@ use OC\Files\Mount\MoveableMount;
 use OCA\DAV\Connector\Sabre\Exception\FileLocked;
 use OCA\DAV\Connector\Sabre\Exception\Forbidden;
 use OCA\DAV\Connector\Sabre\Exception\InvalidPath;
+use OCA\DAV\TrashBin\ITrashBinNode;
 use OCA\DAV\Upload\FutureFile;
 use OCP\Files\FileContentNotAllowedException;
 use OCP\Files\ForbiddenException;
@@ -53,7 +54,6 @@ use Sabre\DAV\IFile;
 use Sabre\DAV\IMoveTarget;
 use Sabre\DAV\INode;
 use Sabre\DAV\IQuota;
-use Sabre\HTTP\URLUtil;
 
 class Directory extends Node implements ICollection, IQuota, IMoveTarget {
 
@@ -160,6 +160,7 @@ class Directory extends Node implements ICollection, IQuota, IMoveTarget {
 			$this->fileView->verifyPath($this->path, $name);
 
 			$path = $this->fileView->getAbsolutePath($this->path) . '/' . $name;
+			$path = Filesystem::normalizePath($path);
 
 			if (!$info) {
 				// use a dummy FileInfo which is acceptable here since it will be refreshed after the put is complete
@@ -168,7 +169,12 @@ class Directory extends Node implements ICollection, IQuota, IMoveTarget {
 
 			$node = new File($this->fileView, $info);
 			$node->acquireLock(ILockingProvider::LOCK_SHARED);
-			return $node->put($data);
+			try {
+				$result = $node->put($data);
+			} finally {
+				$node->releaseLock(ILockingProvider::LOCK_SHARED);
+			}
+			return $result;
 		} catch (StorageNotAvailableException $e) {
 			throw new SabreServiceUnavailable($e->getMessage());
 		} catch (InvalidPathException $ex) {
@@ -318,7 +324,12 @@ class Directory extends Node implements ICollection, IQuota, IMoveTarget {
 		//
 		// TODO: resolve chunk file name here and implement "updateFile"
 		$path = $this->path . '/' . $name;
-		return $this->fileView->file_exists($path);
+		$path = FileSystem::normalizePath($path);
+		try {
+			return $this->fileView->file_exists($path);
+		} catch (StorageNotAvailableException $e) {
+			throw new SabreServiceUnavailable($e->getMessage());
+		}
 	}
 
 	/**
@@ -342,6 +353,8 @@ class Directory extends Node implements ICollection, IQuota, IMoveTarget {
 			throw new Forbidden($ex->getMessage(), $ex->getRetry());
 		} catch (LockedException $e) {
 			throw new FileLocked($e->getMessage(), $e->getCode(), $e);
+		} catch (StorageNotAvailableException $e) {
+			throw new SabreServiceUnavailable($e->getMessage());
 		}
 	}
 
@@ -399,6 +412,13 @@ class Directory extends Node implements ICollection, IQuota, IMoveTarget {
 	 */
 	public function moveInto($targetName, $fullSourcePath, INode $sourceNode) {
 		if (!$sourceNode instanceof Node) {
+			if ($sourceNode instanceof ITrashBinNode) {
+				if (!$this->fileView->isCreatable($this->getPath())) {
+					throw new SabreForbidden('Destination directory is not writable');
+				}
+
+				return $sourceNode->restore($this->path . '/' . $targetName);
+			}
 			// it's a file of another kind, like FutureFile
 			if ($sourceNode instanceof IFile) {
 				// fallback to default copy+delete handling
@@ -415,7 +435,7 @@ class Directory extends Node implements ICollection, IQuota, IMoveTarget {
 
 		# check the destination path, for source see below
 		if (Filesystem::isForbiddenFileOrDir($destinationPath)) {
-			throw new SabreForbidden();
+			throw new SabreForbidden('Destination path contains a blacklisted or excluded name');
 		}
 
 		$targetNodeExists = $this->childExists($targetName);
@@ -426,7 +446,7 @@ class Directory extends Node implements ICollection, IQuota, IMoveTarget {
 			throw new SabreForbidden('Could not copy directory ' . $sourceNode->getName() . ', target exists');
 		}
 
-		list($sourceDir, ) = URLUtil::splitPath($sourceNode->getPath());
+		list($sourceDir, ) = \Sabre\Uri\split($sourceNode->getPath());
 		$destinationDir = $this->getPath();
 
 		$sourcePath = $sourceNode->getPath();
@@ -444,11 +464,11 @@ class Directory extends Node implements ICollection, IQuota, IMoveTarget {
 			if ($targetNodeExists || $sameFolder) {
 				// note that renaming a share mount point is always allowed
 				if (!$this->fileView->isUpdatable($destinationDir) && !$isMovableMount) {
-					throw new SabreForbidden();
+					throw new SabreForbidden('Mount is not movable');
 				}
 			} else {
 				if (!$this->fileView->isCreatable($destinationDir)) {
-					throw new SabreForbidden();
+					throw new SabreForbidden('Destination directory is not writable');
 				}
 			}
 
@@ -456,7 +476,7 @@ class Directory extends Node implements ICollection, IQuota, IMoveTarget {
 				// moving to a different folder, source will be gone, like a deletion
 				// note that moving a share mount point is always allowed
 				if (!$this->fileView->isDeletable($sourcePath) && !$isMovableMount) {
-					throw new SabreForbidden();
+					throw new SabreForbidden('Source file or directory cannot be deleted');
 				}
 			}
 
@@ -469,7 +489,7 @@ class Directory extends Node implements ICollection, IQuota, IMoveTarget {
 
 			$renameOkay = $this->fileView->rename($sourcePath, $destinationPath);
 			if (!$renameOkay) {
-				throw new SabreForbidden('');
+				throw new SabreForbidden('There was an error while renaming the file or directory');
 			}
 		} catch (StorageNotAvailableException $e) {
 			throw new SabreServiceUnavailable($e->getMessage());

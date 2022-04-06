@@ -16,7 +16,7 @@
 		'<div class="lock-entry" data-index="{{index}}">' +
 		'<div style="display: inline;">{{displayText}}</div>' +
 		// TODO: no inline css
-		'<a href="#" class="unlock" style="float: right" title="{{unlockLabel}}">' +
+		'<a href="#" class="unlock has-tooltip" style="float: right" title="{{unlockLabel}}">' +
 		'<span class="icon icon-lock-open" style="display: block" /></a>' +
 		'</div>' +
 		'{{else}}' +
@@ -41,7 +41,8 @@
 				index: index,
 				displayText: t('files', '{owner} has locked this resource via {path}', {owner: lock.owner, path: path}),
 				locktoken: lock.locktoken,
-				lockroot: lock.lockroot
+				lockroot: lock.lockroot,
+				unlockLabel: t('files', 'Unlock')
 			};
 		});
 	}
@@ -62,7 +63,6 @@
 				var self = this;
 				var $target = $(event.target).closest('.lock-entry');
 				var lockIndex = parseInt($target.attr('data-index'), 10);
-
 				var currentLock = this.model.get('activeLocks')[lockIndex];
 
 				// FIXME: move to FileInfoModel
@@ -75,7 +75,6 @@
 							// implicit clone of array else backbone doesn't fire change event
 							var locks = _.without(self.model.get('activeLocks') || [], currentLock);
 							self.model.set('activeLocks', locks);
-							self.render();
 						}
 						else if (result.status === 403) {
 							OC.Notification.show(t('files', 'Could not unlock, please contact the lock owner {owner}', {owner: currentLock.owner}));
@@ -109,6 +108,7 @@
 					emptyResultLabel: t('files', 'Resource is not locked'),
 					locks: formatLocks(this.model.get('activeLocks'))
 				}));
+				this.$el.find('.has-tooltip').tooltip();
 			},
 
 			/**
@@ -121,7 +121,21 @@
 			canDisplay: function(fileInfo) {
 				// don't display if no lock is set
 				return fileInfo && fileInfo.get('activeLocks') && fileInfo.get('activeLocks').length > 0;
-			}
+			},
+
+			setFileInfo: function(fileInfo) {
+				if (this.model !== fileInfo) {
+					this.model = fileInfo;
+					this.render();
+					if (fileInfo) {
+						const self = this;
+						this.model.on('change', function(data) {
+							self.render();
+						});
+					}
+				}
+			},
+
 		});
 
 	OCA.Files.LockTabView = LockTabView;

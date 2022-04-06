@@ -2,7 +2,7 @@
 /**
  * @author Sujith Haridasan <sharidasan@owncloud.com>
  *
- * @copyright Copyright (c) 2018, ownCloud GmbH
+ * @copyright Copyright (c) 2019, ownCloud GmbH
  * @license AGPL-3.0
  *
  * This code is free software: you can redistribute it and/or modify
@@ -32,7 +32,7 @@ class Version20170913113840 implements ISimpleMigration {
 	public function run(IOutput $out) {
 		$installedVersion = \OC::$server->getConfig()->getSystemValue('version', '0.0.0');
 
-		if (version_compare('10.0.3', $installedVersion, '>=') === true) {
+		if (\version_compare('10.0.3', $installedVersion, '>=') === true) {
 			$encryptionEnable = \OC::$server->getAppConfig()->getValue('encryption', 'enabled', 'yes');
 			$coreEncryptionEnable = \OC::$server->getAppConfig()->getValue('core', 'encryption_enabled', 'yes');
 			$userSpecificKey = \OC::$server->getAppConfig()->getValue('encryption', 'userSpecificKey', '');
@@ -45,5 +45,3 @@ class Version20170913113840 implements ISimpleMigration {
 		}
 	}
 }
-
-

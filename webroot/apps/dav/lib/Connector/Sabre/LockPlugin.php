@@ -26,6 +26,9 @@ namespace OCA\DAV\Connector\Sabre;
 
 use OC\Lock\Persistent\LockMapper;
 use OCA\DAV\Connector\Sabre\Exception\FileLocked;
+use OCP\IConfig;
+use OCP\IGroupManager;
+use OCP\IUser;
 use OCP\Lock\ILockingProvider;
 use OCP\Lock\LockedException;
 use Sabre\DAV\Exception\Forbidden;
@@ -42,14 +45,29 @@ class LockPlugin extends ServerPlugin {
 	 * @var \Sabre\DAV\Server
 	 */
 	private $server;
+	/**
+	 * @var IConfig
+	 */
+	private $config;
+	/**
+	 * @var IGroupManager
+	 */
+	private $groupManager;
+
+	public function __construct(IConfig $config, IGroupManager $groupManager) {
+		$this->config = $config;
+		$this->groupManager = $groupManager;
+	}
+
+	private $missedLocks = [];
 
 	/**
 	 * {@inheritdoc}
 	 */
 	public function initialize(\Sabre\DAV\Server $server) {
 		$this->server = $server;
-		$this->server->on('beforeMethod', [$this, 'getLock'], 50);
-		$this->server->on('afterMethod', [$this, 'releaseLock'], 50);
+		$this->server->on('beforeMethod:*', [$this, 'getLock'], 50);
+		$this->server->on('afterMethod:*', [$this, 'releaseLock'], 50);
 		$this->server->on('beforeUnlock', [$this, 'beforeUnlock'], 20);
 	}
 
@@ -59,9 +77,15 @@ class LockPlugin extends ServerPlugin {
 		if ($request->getMethod() !== 'PUT' || \OC_FileChunking::isWebdavChunk()) {
 			return;
 		}
+
+		$requestedPath = $request->getPath();
 		try {
-			$node = $this->server->tree->getNodeForPath($request->getPath());
+			$node = $this->server->tree->getNodeForPath($requestedPath);
 		} catch (NotFound $e) {
+			if (!isset($this->missedLocks[$requestedPath])) {
+				$this->missedLocks[$requestedPath] = 0;
+			}
+			$this->missedLocks[$requestedPath]++;
 			return;
 		}
 		if ($node instanceof Node) {
@@ -77,8 +101,19 @@ class LockPlugin extends ServerPlugin {
 		if ($request->getMethod() !== 'PUT' || \OC_FileChunking::isWebdavChunk()) {
 			return;
 		}
+
+		$requestedPath = $request->getPath();
+		if (isset($this->missedLocks[$requestedPath])) {
+			// don't bother to unlock if we couldn't lock
+			$this->missedLocks[$requestedPath]--;
+			if ($this->missedLocks[$requestedPath] === 0) {
+				unset($this->missedLocks[$requestedPath]);
+			}
+			return;
+		}
+
 		try {
-			$node = $this->server->tree->getNodeForPath($request->getPath());
+			$node = $this->server->tree->getNodeForPath($requestedPath);
 		} catch (NotFound $e) {
 			return;
 		}
@@ -106,8 +141,28 @@ class LockPlugin extends ServerPlugin {
 			return;
 		}
 		$currentUser = \OC::$server->getUserSession()->getUser();
-		if ($currentUser === null || $lock->getOwnerAccountId() !== $currentUser->getAccountId()) {
+		if ($currentUser === null) {
 			throw new Forbidden();
 		}
+
+		if ($lock->getOwnerAccountId() === $currentUser->getAccountId()) {
+			return;
+		}
+
+		if (!$this->userIsALockBreaker($currentUser)) {
+			throw new Forbidden();
+		}
+	}
+
+	private function userIsALockBreaker(IUser $currentUser): bool {
+		$lockBreakerGroups = $this->config->getAppValue('core', 'lock-breaker-groups', '[]');
+		$lockBreakerGroups = \json_decode($lockBreakerGroups) ?? [];
+
+		foreach ($lockBreakerGroups as $lockBreakerGroup) {
+			if ($this->groupManager->isInGroup($currentUser->getUID(), $lockBreakerGroup)) {
+				return true;
+			}
+		}
+		return false;
 	}
 }

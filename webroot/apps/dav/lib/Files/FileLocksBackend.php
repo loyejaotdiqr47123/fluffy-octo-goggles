@@ -22,6 +22,10 @@
 namespace OCA\DAV\Files;
 
 use OCA\DAV\Connector\Sabre\Node;
+use OCA\DAV\Files\PublicFiles\PublicSharedRootNode;
+use OCA\DAV\Files\PublicFiles\SharedFile;
+use OCA\DAV\Files\PublicFiles\SharedFolder;
+use OCP\Files\NotFoundException;
 use OCP\Files\Storage\IPersistentLockingStorage;
 use OCP\Lock\Persistent\ILock;
 use Sabre\DAV\Exception\NotFound;
@@ -67,7 +71,15 @@ class FileLocksBackend implements BackendInterface {
 		try {
 			$node = $this->tree->getNodeForPath($uri);
 
-			if (!$node instanceof Node) {
+			if ($node instanceof SharedFile || $node instanceof SharedFolder) {
+				$node = $node->getNode();
+			} elseif ($node instanceof PublicSharedRootNode) {
+				try {
+					$node = $node->getShare()->getNode();
+				} catch (NotFoundException $e) {
+					return [];
+				}
+			} elseif (!$node instanceof Node) {
 				return [];
 			}
 
@@ -77,6 +89,7 @@ class FileLocksBackend implements BackendInterface {
 			}
 
 			/** @var IPersistentLockingStorage $storage */
+			'@phan-var IPersistentLockingStorage $storage';
 			$locks = $storage->getLocks($node->getFileInfo()->getInternalPath(), $returnChildLocks);
 		} catch (NotFound $e) {
 			if ($uri === '') {
@@ -93,7 +106,15 @@ class FileLocksBackend implements BackendInterface {
 				return [];
 			}
 
-			if (!$node instanceof Node) {
+			if ($node instanceof SharedFile || $node instanceof SharedFolder) {
+				$node = $node->getNode();
+			} elseif ($node instanceof PublicSharedRootNode) {
+				try {
+					$node = $node->getShare()->getNode();
+				} catch (NotFoundException $e) {
+					return [];
+				}
+			} elseif (!$node instanceof Node) {
 				return [];
 			}
 
@@ -104,6 +125,7 @@ class FileLocksBackend implements BackendInterface {
 			}
 
 			/** @var IPersistentLockingStorage $storage */
+			'@phan-var IPersistentLockingStorage $storage';
 			$locks = $storage->getLocks($node->getFileInfo()->getInternalPath() . '/' . $childPath, $returnChildLocks);
 		}
 
@@ -179,6 +201,7 @@ class FileLocksBackend implements BackendInterface {
 		}
 
 		/** @var IPersistentLockingStorage $storage */
+		'@phan-var IPersistentLockingStorage $storage';
 		$lock = $storage->lockNodePersistent($node->getFileInfo()->getInternalPath(), [
 			'token' => $lockInfo->token,
 			'scope' => $lockInfo->scope === Locks\LockInfo::EXCLUSIVE ? ILock::LOCK_SCOPE_EXCLUSIVE : ILock::LOCK_SCOPE_SHARED,
@@ -189,6 +212,7 @@ class FileLocksBackend implements BackendInterface {
 
 		// in case the timeout has not been accepted, adjust in lock info
 		$lockInfo->timeout = $lock->getTimeout();
+		$lockInfo->owner = $lock->getOwner();
 
 		return !empty($lock);
 	}
@@ -219,6 +243,7 @@ class FileLocksBackend implements BackendInterface {
 		}
 
 		/** @var IPersistentLockingStorage $storage */
+		'@phan-var IPersistentLockingStorage $storage';
 		return $storage->unlockNodePersistent($node->getFileInfo()->getInternalPath(), [
 			'token' => $lockInfo->token
 		]);

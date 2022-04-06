@@ -113,6 +113,7 @@ class IMipPlugin extends SabreIMipPlugin {
 				break;
 			case 'CANCEL':
 				$subject = 'Cancelled: ' . $summary;
+				$iTipMessage->message->VEVENT->STATUS = 'CANCELLED';
 				break;
 		}
 
@@ -121,6 +122,7 @@ class IMipPlugin extends SabreIMipPlugin {
 		$message = $this->mailer->createMessage();
 
 		$message->setReplyTo([$sender => $senderName])
+			->setFrom([$sender => $senderName])
 			->setTo([$recipient => $recipientName])
 			->setSubject($subject)
 			->setBody($iTipMessage->message->serialize(), $contentType);

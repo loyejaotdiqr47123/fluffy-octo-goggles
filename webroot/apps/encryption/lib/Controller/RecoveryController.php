@@ -4,7 +4,7 @@
  * @author Clark Tomlinson <fallen013@gmail.com>
  * @author Lukas Reschke <lukas@statuscode.ch>
  *
- * @copyright Copyright (c) 2018, ownCloud GmbH
+ * @copyright Copyright (c) 2019, ownCloud GmbH
  * @license AGPL-3.0
  *
  * This code is free software: you can redistribute it and/or modify
@@ -22,7 +22,6 @@
  */
 
 namespace OCA\Encryption\Controller;
-
 
 use OCA\Encryption\Recovery;
 use OCP\AppFramework\Controller;
@@ -90,12 +89,12 @@ class RecoveryController extends Controller {
 				Http::STATUS_BAD_REQUEST);
 		}
 
-		if (isset($adminEnableRecovery) && $adminEnableRecovery === '1') {
+		if ($adminEnableRecovery === '1') {
 			if ($this->recovery->enableAdminRecovery($recoveryPassword)) {
 				return new DataResponse(['data' => ['message' => (string)$this->l->t('Recovery key successfully enabled')]]);
 			}
 			return new DataResponse(['data' => ['message' => (string)$this->l->t('Could not enable recovery key. Please check your recovery key password!')]], Http::STATUS_BAD_REQUEST);
-		} elseif (isset($adminEnableRecovery) && $adminEnableRecovery === '0') {
+		} elseif ($adminEnableRecovery === '0') {
 			if ($this->recovery->disableAdminRecovery($recoveryPassword)) {
 				return new DataResponse(['data' => ['message' => (string)$this->l->t('Recovery key successfully disabled')]]);
 			}
@@ -120,7 +119,7 @@ class RecoveryController extends Controller {
 
 		if (empty($newPassword)) {
 			$errorMessage = (string)$this->l->t('Please provide a new recovery password');
-			return new DataResponse (['data' => ['message' => $errorMessage]], Http::STATUS_BAD_REQUEST);
+			return new DataResponse(['data' => ['message' => $errorMessage]], Http::STATUS_BAD_REQUEST);
 		}
 
 		if (empty($confirmPassword)) {
@@ -160,7 +159,6 @@ class RecoveryController extends Controller {
 	 */
 	public function userSetRecovery($userEnableRecovery) {
 		if ($userEnableRecovery === '0' || $userEnableRecovery === '1') {
-
 			$result = $this->recovery->setRecoveryForUser($userEnableRecovery);
 
 			if ($result) {
@@ -179,7 +177,6 @@ class RecoveryController extends Controller {
 					]
 				);
 			}
-
 		}
 		return new DataResponse(
 			[
@@ -188,5 +185,4 @@ class RecoveryController extends Controller {
 				]
 			], Http::STATUS_BAD_REQUEST);
 	}
-
 }

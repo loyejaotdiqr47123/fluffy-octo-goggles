@@ -26,8 +26,6 @@
  *
  */
 
-OC::$CLASSPATH['OC_Mount_Config'] = 'files_external/lib/config.php';
-
 require_once __DIR__ . '/../3rdparty/autoload.php';
 
 // register Application object singleton
@@ -35,7 +33,7 @@ require_once __DIR__ . '/../3rdparty/autoload.php';
 $appContainer = \OC_Mount_Config::$app->getContainer();
 
 $config = \OC::$server->getConfig();
-if ($config->getAppValue('core', 'enable_external_storage', 'no') === 'yes') {
+if (\class_exists('OCA\Files\App') && $config->getAppValue('core', 'enable_external_storage', 'no') === 'yes') {
 	\OCA\Files\App::getNavigationManager()->add(function () {
 		$l = \OC::$server->getL10N('files_external');
 		return [

@@ -5,7 +5,7 @@
  * @author Lukas Reschke <lukas@statuscode.ch>
  * @author Thomas Müller <thomas.mueller@tmit.eu>
  *
- * @copyright Copyright (c) 2018, ownCloud GmbH
+ * @copyright Copyright (c) 2019, ownCloud GmbH
  * @license AGPL-3.0
  *
  * This code is free software: you can redistribute it and/or modify
@@ -23,7 +23,6 @@
  */
 
 namespace OCA\Encryption\Users;
-
 
 use OCA\Encryption\Crypto\Crypt;
 use OCA\Encryption\KeyManager;
@@ -48,7 +47,6 @@ class Setup {
 	 */
 	private $user;
 
-
 	/**
 	 * @param ILogger $logger
 	 * @param IUserSession $userSession
@@ -60,10 +58,10 @@ class Setup {
 								Crypt $crypt,
 								KeyManager $keyManager) {
 		$this->logger = $logger;
-		$this->user = $userSession && $userSession->isLoggedIn() ? $userSession->getUser()->getUID() : false;
+		$this->user = $userSession !== null && $userSession->isLoggedIn() ? $userSession->getUser()->getUID() : false;
 		$this->crypt = $crypt;
 		$this->keyManager = $keyManager;
- 	}
+	}
 
 	/**
 	 * @param string $uid user id

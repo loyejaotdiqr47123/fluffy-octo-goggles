@@ -71,14 +71,14 @@ class AppEnabledPlugin extends ServerPlugin {
 	 */
 	public function initialize(\Sabre\DAV\Server $server) {
 		$this->server = $server;
-		$this->server->on('beforeMethod', [$this, 'checkAppEnabled'], 30);
+		$this->server->on('beforeMethod:*', [$this, 'checkAppEnabled'], 30);
 	}
 
 	/**
 	 * This method is called before any HTTP after auth and checks if the user has access to the app
 	 *
 	 * @throws \Sabre\DAV\Exception\Forbidden
-	 * @return bool
+	 * @return void
 	 */
 	public function checkAppEnabled() {
 		if (!$this->appManager->isEnabledForUser($this->app)) {

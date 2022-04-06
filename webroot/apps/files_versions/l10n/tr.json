@@ -1,9 +1,8 @@
 { "translations": {
-    "Could not revert: %s" : "Geri alınamayan: %s",
     "Versions" : "Sürümler",
     "Failed to revert {file} to revision {timestamp}." : "{file} dosyası {timestamp} gözden geçirmesine geri alınamadı.",
+    "_%n byte_::_%n bytes_" : ["%n bayt","%n bayt"],
     "Restore" : "Geri yükle",
-    "No other versions available" : "Başka sürüm mevcut değil",
-    "More versions..." : "Daha fazla sürüm..."
+    "No other versions available" : "Başka sürüm mevcut değil"
 },"pluralForm" :"nplurals=2; plural=(n > 1);"
 }

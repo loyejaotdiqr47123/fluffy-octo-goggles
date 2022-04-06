@@ -1,8 +1,9 @@
 <?php
 /**
  * @author Viktar Dubiniuk <dubinuk@owncloud.com>
+ * @author Ilja Neumann <ineumann@owncloud.com>
  *
- * @copyright Copyright (c) 2018, ownCloud GmbH
+ * @copyright Copyright (c) 2019, ownCloud GmbH
  * @license AGPL-3.0
  *
  * This code is free software: you can redistribute it and/or modify
@@ -35,12 +36,12 @@ use OCP\IL10N;
  * @package OCA\Market
  */
 class HttpService {
-	const CACHE_KEY = 'ocmp';
+	public const CACHE_KEY = 'ocmp';
 
-	const APPS = 'apps_%s';
-	const BUNDLES = 'bundles';
-	const CATEGORIES = 'categories';
-	const DEMO_KEY = 'demo_license_information';
+	public const APPS = 'apps_%s';
+	public const BUNDLES = 'bundles';
+	public const CATEGORIES = 'categories';
+	public const DEMO_KEY = 'demo_license_information';
 
 	private $urlConfig = [
 		self::APPS => '/api/v1/platform/%s/apps.json',
@@ -142,6 +143,28 @@ class HttpService {
 	}
 
 	/**
+	 *
+	 * Exchange login token for api key
+	 *
+	 * @param string $loginToken
+	 * @param string $codeVerifier
+	 * @return string
+	 * @throws AppManagerException
+	 */
+	public function exchangeLoginTokenForApiKey($loginToken, $codeVerifier) {
+		$url = $this->getAbsoluteUrl('/api/v1/authorize');
+		$result = $this->httpPost($url, [
+			'body' => [
+				'loginToken' => $loginToken,
+				'codeVerifier' => $codeVerifier
+			]
+		]);
+
+		$body = \json_decode($result->getBody(), true);
+		return $body['apiKey'];
+	}
+
+	/**
 	 * @return void
 	 */
 	public function invalidateCache() {
@@ -166,7 +189,7 @@ class HttpService {
 			$cache = $this->cacheFactory->create(self::CACHE_KEY);
 			$data = $cache->get($key);
 			if ($data !== null) {
-				return json_decode($data, true);
+				return \json_decode($data, true);
 			}
 		}
 
@@ -180,7 +203,7 @@ class HttpService {
 			$cache = $this->cacheFactory->create(self::CACHE_KEY);
 			$cache->set($key, $data, 60 * 60 * 24);
 		}
-		return json_decode($data, true);
+		return \json_decode($data, true);
 	}
 
 	/**
@@ -212,7 +235,6 @@ class HttpService {
 		}
 		return $this->config->getAppValue('market', 'key', null);
 	}
-
 	/**
 	 * @param string $path
 	 * @param array $options
@@ -223,8 +245,8 @@ class HttpService {
 	 * @throws AppManagerException
 	 */
 	private function httpGet($path, $options, $apiKey) {
-		if ($apiKey !== null) {
-			$options = array_merge(
+		if (!empty($apiKey)) {
+			$options = \array_merge(
 				[
 					'headers' => ['Authorization' => "apikey: $apiKey"]
 				],
@@ -233,7 +255,7 @@ class HttpService {
 		}
 		$ca = $this->config->getSystemValue('marketplace.ca', null);
 		if ($ca !== null) {
-			$options = array_merge(
+			$options = \array_merge(
 				[
 					'verify' => $ca
 				],
@@ -264,12 +286,46 @@ class HttpService {
 			throw new AppManagerException(
 				$this->l10n->t(
 					'No marketplace connection: %s',
-					$e->getMessage()
+					[$e->getMessage()]
 				),
 				0,
 				$e
 			);
 		}
+		return $response;
+	}
+
+	/**
+	 * @param string $path
+	 * @param array $options
+	 * @return \OCP\Http\Client\IResponse
+	 * @throws AppManagerException
+	 */
+	private function httpPost($path, $options) {
+		$ca = $this->config->getSystemValue('marketplace.ca', null);
+		if ($ca !== null) {
+			$options = \array_merge(
+				[
+					'verify' => $ca
+				],
+				$options
+			);
+		}
+		$client = $this->httpClientService->newClient();
+
+		try {
+			$response = $client->post($path, $options);
+		} catch (TransferException $e) {
+			throw new AppManagerException(
+				$this->l10n->t(
+					'No marketplace connection: %s',
+					[$e->getMessage()]
+				),
+				0,
+				$e
+			);
+		}
+
 		return $response;
 	}
 
@@ -284,11 +340,11 @@ class HttpService {
 		$url = $this->urlConfig[$code];
 		if ($code === self::APPS) {
 			$platformVersion = $this->versionHelper->getPlatformVersion(3);
-			$url = sprintf($url, $platformVersion);
-			$code = sprintf($code, $platformVersion);
+			$url = \sprintf($url, $platformVersion);
+			$code = \sprintf($code, $platformVersion);
 		} elseif ($code == self::DEMO_KEY) {
 			$instanceId = $this->config->getSystemValue('instanceid');
-			$url = sprintf($url, $instanceId);
+			$url = \sprintf($url, $instanceId);
 		}
 		return $this->queryData($code, $url);
 	}
@@ -299,6 +355,6 @@ class HttpService {
 	 */
 	private function getAbsoluteUrl($relativeUrl) {
 		$storeUrl = $this->config->getSystemValue('appstoreurl', 'https://marketplace.owncloud.com');
-		return rtrim($storeUrl, '/') . $relativeUrl;
+		return \rtrim($storeUrl, '/') . $relativeUrl;
 	}
 }

@@ -26,6 +26,10 @@
  *
  */
 
+/*
+ * sharing_external_add ajax call handler
+ */
+
 OCP\JSON::callCheck();
 OCP\JSON::checkLoggedIn();
 OCP\JSON::checkAppEnabled('files_sharing');
@@ -42,7 +46,8 @@ if ($federatedShareProvider->isIncomingServer2serverShareEnabled() === false) {
 }
 
 $token = $_POST['token'];
-$remote = $_POST['remote'];
+// cut query and|or anchor part off
+$remote = \strtok($_POST['remote'], '?#');
 $owner = $_POST['owner'];
 $ownerDisplayName = $_POST['ownerDisplayName'];
 $name = $_POST['name'];
@@ -62,59 +67,61 @@ if (\OC\Share\Helper::isSameUserOnSameServer($owner, $remote, $currentUser, $cur
 }
 
 $externalManager = new \OCA\Files_Sharing\External\Manager(
-		\OC::$server->getDatabaseConnection(),
-		\OC\Files\Filesystem::getMountManager(),
-		\OC\Files\Filesystem::getLoader(),
-		\OC::$server->getNotificationManager(),
-		\OC::$server->getEventDispatcher(),
-		\OC::$server->getUserSession()->getUser()->getUID()
+	\OC::$server->getDatabaseConnection(),
+	\OC\Files\Filesystem::getMountManager(),
+	\OC\Files\Filesystem::getLoader(),
+	\OC::$server->getNotificationManager(),
+	\OC::$server->getEventDispatcher(),
+	\OC::$server->getUserSession()->getUser()->getUID()
 );
 
-// check for ssl cert
-if (\substr($remote, 0, 5) === 'https') {
-	try {
-		\OC::$server->getHTTPClientService()->newClient()->get($remote, [
-			'timeout' => 10,
-			'connect_timeout' => 10,
-		])->getBody();
-	} catch (\Exception $e) {
-		\OCP\JSON::error(['data' => ['message' => $l->t('Invalid or untrusted SSL certificate')]]);
-		exit;
-	}
-}
-
+// add federated share
 $mount = $externalManager->addShare($remote, $token, $password, $name, $ownerDisplayName, true);
 
 /**
  * @var \OCA\Files_Sharing\External\Storage $storage
  */
 $storage = $mount->getStorage();
+'@phan-var \OCA\Files_Sharing\External\Storage $storage';
 try {
-	// check if storage exists
+	// check if storage exists after adding
 	$storage->checkStorageAvailability();
 } catch (\OCP\Files\StorageInvalidException $e) {
 	// note: checkStorageAvailability will already remove the invalid share
 	\OCP\Util::writeLog(
 		'files_sharing',
-		'Invalid remote storage: ' . \get_class($e) . ': ' . $e->getMessage(),
+		'Failure adding external share. Invalid remote storage thrown while checking storage availability',
+		\OCP\Util::ERROR
+	);
+	\OCP\Util::writeLog(
+		'files_sharing',
+		'Invalid remote storage exception:' . \get_class($e) . ': ' . $e->getMessage(),
 		\OCP\Util::DEBUG
 	);
+	$externalManager->removeShare($mount->getMountPoint());
+
+	// return JSON response with error
 	\OCP\JSON::error(
-		[
-			'data' => [
-				'message' => $l->t('Could not authenticate to remote share, password might be wrong')
-			]
-		]
+		['data' => ['message' => $l->t('Could not authenticate to federated share, password might be wrong')]]
 	);
 	exit();
 } catch (\Exception $e) {
+	\OCP\Util::writeLog(
+		'files_sharing',
+		'Failure adding external share. Unhandled exception thrown while checking storage availability',
+		\OCP\Util::ERROR
+	);
 	\OCP\Util::writeLog(
 		'files_sharing',
 		'Invalid remote storage: ' . \get_class($e) . ': ' . $e->getMessage(),
 		\OCP\Util::DEBUG
 	);
 	$externalManager->removeShare($mount->getMountPoint());
-	\OCP\JSON::error(['data' => ['message' => $l->t('Storage not valid')]]);
+
+	// return JSON response with error
+	\OCP\JSON::error(
+		['data' => ['message' => $l->t('Storage not valid')]]
+	);
 	exit();
 }
 
@@ -124,7 +131,7 @@ try {
 		$externalManager->removeShare($mount->getMountPoint());
 		\OCP\Util::writeLog(
 			'files_sharing',
-			'Couldn\'t add remote share',
+			'Couldn\'t add federated share',
 			\OCP\Util::DEBUG
 		);
 	}
@@ -141,5 +148,5 @@ try {
 		'Invalid remote storage: ' . \get_class($e) . ': ' . $e->getMessage(),
 		\OCP\Util::DEBUG
 	);
-	\OCP\JSON::error(['data' => ['message' => $l->t('Couldn\'t add remote share')]]);
+	\OCP\JSON::error(['data' => ['message' => $l->t('Couldn\'t add federated share')]]);
 }

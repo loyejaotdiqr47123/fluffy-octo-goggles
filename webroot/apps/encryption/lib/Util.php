@@ -4,7 +4,7 @@
  * @author Clark Tomlinson <fallen013@gmail.com>
  * @author Phil Davis <phil.davis@inf.org>
  *
- * @copyright Copyright (c) 2018, ownCloud GmbH
+ * @copyright Copyright (c) 2019, ownCloud GmbH
  * @license AGPL-3.0
  *
  * This code is free software: you can redistribute it and/or modify
@@ -21,9 +21,7 @@
  *
  */
 
-
 namespace OCA\Encryption;
-
 
 use OC\Files\View;
 use OCA\Encryption\Crypto\Crypt;
@@ -80,7 +78,7 @@ class Util {
 		$this->files = $files;
 		$this->crypt = $crypt;
 		$this->logger = $logger;
-		$this->user = $userSession && $userSession->isLoggedIn() ? $userSession->getUser() : false;
+		$this->user = $userSession !== null && $userSession->isLoggedIn() ? $userSession->getUser() : false;
 		$this->config = $config;
 		$this->userManager = $userManager;
 	}
@@ -140,7 +138,7 @@ class Util {
 	}
 
 	/**
-	 * @param $enabled
+	 * @param boolean $enabled
 	 * @return bool
 	 */
 	public function setRecoveryForUser($enabled) {
@@ -174,14 +172,13 @@ class Util {
 	 */
 	public function getOwner($path) {
 		$owner = '';
-		$parts = explode('/', $path, 3);
-		if (count($parts) > 1) {
+		$parts = \explode('/', $path, 3);
+		if (\count($parts) > 1) {
 			$owner = $parts[1];
 			if ($this->userManager->userExists($owner) === false) {
 				throw new \BadMethodCallException('Unknown user: ' .
 				'method expects path to a user folder relative to the data folder');
 			}
-
 		}
 
 		return $owner;
@@ -198,4 +195,15 @@ class Util {
 		return $storage;
 	}
 
+	/**
+	 * Deletes the encryption settings for the masterkey
+	 */
+	public function removeEncryptionAppSettings() {
+		$this->config->setAppValue('core', 'encryption_enabled', 'no');
+		$this->config->deleteAppValue('encryption', 'useMasterKey');
+		$this->config->deleteAppValue('encryption', 'masterKeyId');
+		$this->config->deleteAppValue('encryption', 'recoveryKeyId');
+		$this->config->deleteAppValue('encryption', 'publicShareKeyId');
+		$this->config->deleteAppValue('files_encryption', 'installed_version');
+	}
 }

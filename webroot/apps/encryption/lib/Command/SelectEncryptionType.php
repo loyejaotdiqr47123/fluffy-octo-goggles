@@ -2,7 +2,7 @@
 /**
 * @author Björn Schießle <bjoern@schiessle.org>
 *
-* @copyright Copyright (c) 2018, ownCloud GmbH
+* @copyright Copyright (c) 2019, ownCloud GmbH
 * @license AGPL-3.0
 *
 * This code is free software: you can redistribute it and/or modify
@@ -18,7 +18,6 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>
 *
 */
-
 
 namespace OCA\Encryption\Command;
 
@@ -51,7 +50,6 @@ class SelectEncryptionType extends Command {
 	public function __construct(Util $util,
 								IConfig $config,
 								QuestionHelper $questionHelper) {
-
 		$this->util = $util;
 		$this->config = $config;
 		$this->questionHelper = $questionHelper;
@@ -79,8 +77,13 @@ class SelectEncryptionType extends Command {
 		);
 	}
 
+	/**
+	 * @param InputInterface $input
+	 * @param OutputInterface $output
+	 * @return int|void
+	 */
 	protected function execute(InputInterface $input, OutputInterface $output) {
-		if($this->config->getAppValue('core', 'encryption_enabled', 'no') === 'no') {
+		if ($this->config->getAppValue('core', 'encryption_enabled', 'no') === 'no') {
 			$output->writeln('Kindly enable encryption to select the encryption type.');
 			return 1;
 		}
@@ -89,11 +92,11 @@ class SelectEncryptionType extends Command {
 		$yes = $input->getOption('yes');
 
 		$masterKeyNotEnabled = (!$this->util->isMasterKeyEnabled());
-		$userKeysNotEnabled = ($this->config->getAppValue('encryption','userSpecificKey', '') === '');
+		$userKeysNotEnabled = ($this->config->getAppValue('encryption', 'userSpecificKey', '') === '');
 		$freshInstallation = ($masterKeyNotEnabled && $userKeysNotEnabled);
 
-		if(!$freshInstallation) {
-			if(!$masterKeyNotEnabled) {
+		if (!$freshInstallation) {
+			if (!$masterKeyNotEnabled) {
 				$output->writeln("Master key already enabled");
 			} else {
 				$output->writeln("User keys already enabled");
@@ -101,7 +104,7 @@ class SelectEncryptionType extends Command {
 			return 1;
 		}
 
-		if($encryptionType === "masterkey") {
+		if ($encryptionType === "masterkey") {
 			$question = new ConfirmationQuestion(
 				'Warning: Only available for fresh installations with no existing encrypted data! '
 				. 'There is also no way to disable it again. Do you want to continue? (y/n) ', false);
@@ -120,7 +123,5 @@ class SelectEncryptionType extends Command {
 		} else {
 			$output->writeln("The option provided for encryption-type " . $encryptionType . " is not valid. The available options are: 'masterkey' or 'user-keys'");
 		}
-
 	}
 }
-

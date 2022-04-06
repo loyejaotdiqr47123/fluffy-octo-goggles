@@ -44,7 +44,8 @@ class UnInstallApp extends Command {
 		$this
 			->setName('market:uninstall')
 			->setDescription('Un-Install apps.')
-			->addArgument('ids',
+			->addArgument(
+				'ids',
 				InputArgument::OPTIONAL | InputArgument::IS_ARRAY,
 				'Ids of the apps'
 			);
@@ -56,11 +57,11 @@ class UnInstallApp extends Command {
 		}
 
 		$appIds = $input->getArgument('ids');
-		$appIds = array_unique($appIds);
+		$appIds = \array_unique($appIds);
 
-		if (!count($appIds)){
+		if (!\count($appIds)) {
 			$output->writeln("No appIds specified. Nothing to do.");
-			return;
+			return 0;
 		}
 
 		foreach ($appIds as $appId) {

@@ -44,7 +44,6 @@ use Sabre\DAV;
 use Sabre\DAV\Exception\Forbidden;
 use Sabre\DAV\Exception\NotFound;
 use Sabre\DAV\PropPatch;
-use Sabre\HTTP\URLUtil;
 use Sabre\VObject\DateTimeParser;
 use Sabre\VObject\Reader;
 use Sabre\VObject\Recur\EventIterator;
@@ -66,12 +65,12 @@ class CalDavBackend extends AbstractBackend implements SyncSupport, Subscription
 	 * in 2038-01-19 to avoid problems when the date is converted
 	 * to a unix timestamp.
 	 */
-	const MAX_DATE = '2038-01-01';
+	public const MAX_DATE = '2038-01-01';
 
-	const ACCESS_PUBLIC = 4;
-	const CLASSIFICATION_PUBLIC = 0;
-	const CLASSIFICATION_PRIVATE = 1;
-	const CLASSIFICATION_CONFIDENTIAL = 2;
+	public const ACCESS_PUBLIC = 4;
+	public const CLASSIFICATION_PUBLIC = 0;
+	public const CLASSIFICATION_PRIVATE = 1;
+	public const CLASSIFICATION_CONFIDENTIAL = 2;
 
 	/**
 	 * List of CalDAV properties, and how they map to database field names
@@ -128,11 +127,13 @@ class CalDavBackend extends AbstractBackend implements SyncSupport, Subscription
 	 * @param ISecureRandom $random
 	 * @param bool $legacyMode
 	 */
-	public function __construct(IDBConnection $db,
-								Principal $principalBackend,
-								GroupPrincipalBackend $groupPrincipalBackend,
-								ISecureRandom $random,
-								$legacyMode = false) {
+	public function __construct(
+		IDBConnection $db,
+		Principal $principalBackend,
+		GroupPrincipalBackend $groupPrincipalBackend,
+		ISecureRandom $random,
+		$legacyMode = false
+	) {
 		$this->db = $db;
 		$this->principalBackend = $principalBackend;
 		$this->sharingBackend = new Backend($this->db, $principalBackend, $groupPrincipalBackend, 'calendar');
@@ -235,7 +236,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport, Subscription
 			->execute();
 
 		while ($row = $result->fetch()) {
-			list(, $name) = URLUtil::splitPath($row['principaluri']);
+			list(, $name) = \Sabre\Uri\split($row['principaluri']);
 			$uri = $row['uri'] . '_shared_by_' . $name;
 			$row['displayname'] .= " ($name)";
 			$components = [];
@@ -338,7 +339,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport, Subscription
 			->execute();
 
 		while ($row = $result->fetch()) {
-			list(, $name) = URLUtil::splitPath($row['principaluri']);
+			list(, $name) = \Sabre\Uri\split($row['principaluri']);
 			$row['displayname'] .= "($name)";
 			$components = [];
 			if ($row['components']) {
@@ -402,7 +403,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport, Subscription
 			throw new NotFound('Node with name \'' . $uri . '\' could not be found');
 		}
 
-		list(, $name) = URLUtil::splitPath($row['principaluri']);
+		list(, $name) = \Sabre\Uri\split($row['principaluri']);
 		$row['displayname'] = $row['displayname'] . ' ' . "($name)";
 		$components = [];
 		if ($row['components']) {
@@ -959,7 +960,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport, Subscription
 	 * Note that especially time-range-filters may be difficult to parse. A
 	 * time-range filter specified on a VEVENT must for instance also handle
 	 * recurrence rules correctly.
-	 * A good example of how to interprete all these filters can also simply
+	 * A good example of how to interpret all these filters can also simply
 	 * be found in Sabre\CalDAV\CalendarQueryFilter. This class is as correct
 	 * as possible, so it gives you a good idea on what type of stuff you need
 	 * to think of.
@@ -1660,7 +1661,7 @@ class CalDavBackend extends AbstractBackend implements SyncSupport, Subscription
 
 	private function convertPrincipal($principalUri, $toV2 = null) {
 		if ($this->principalBackend->getPrincipalPrefix() === 'principals') {
-			list(, $name) = URLUtil::splitPath($principalUri);
+			list(, $name) = \Sabre\Uri\split($principalUri);
 			$toV2 = $toV2 === null ? !$this->legacyMode : $toV2;
 			if ($toV2) {
 				return "principals/users/$name";

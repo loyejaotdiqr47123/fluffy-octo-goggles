@@ -43,7 +43,7 @@ use OCP\IUserManager;
  * @package OCA\FederatedFileSharing\Controller
  */
 class OcmController extends Controller {
-	const API_VERSION = '1.0-proposal1';
+	public const API_VERSION = '1.0-proposal1';
 
 	/**
 	 * @var OcmMiddleware
@@ -87,14 +87,15 @@ class OcmController extends Controller {
 	 * @param FedShareManager $fedShareManager
 	 * @param ILogger $logger
 	 */
-	public function __construct($appName,
-									IRequest $request,
-									OcmMiddleware $ocmMiddleware,
-									IURLGenerator $urlGenerator,
-									IUserManager $userManager,
-									AddressHandler $addressHandler,
-									FedShareManager $fedShareManager,
-									ILogger $logger
+	public function __construct(
+		$appName,
+		IRequest $request,
+		OcmMiddleware $ocmMiddleware,
+		IURLGenerator $urlGenerator,
+		IUserManager $userManager,
+		AddressHandler $addressHandler,
+		FedShareManager $fedShareManager,
+		ILogger $logger
 	) {
 		parent::__construct($appName, $request);
 
@@ -163,18 +164,18 @@ class OcmController extends Controller {
 	 *
 	 * @return JSONResponse
 	 */
-	public function createShare($shareWith,
-								$name,
-								$description,
-								$providerId,
-								$owner,
-								$ownerDisplayName,
-								$sender,
-								$senderDisplayName,
-								$shareType,
-								$resourceType,
-								$protocol
-
+	public function createShare(
+		$shareWith,
+		$name,
+		$description,
+		$providerId,
+		$owner,
+		$ownerDisplayName,
+		$sender,
+		$senderDisplayName,
+		$shareType,
+		$resourceType,
+		$protocol
 	) {
 		try {
 			$this->ocmMiddleware->assertIncomingSharingEnabled();
@@ -195,7 +196,7 @@ class OcmController extends Controller {
 				|| !isset($protocol['options']['sharedSecret'])
 			) {
 				throw new BadRequestException(
-					'server can not add remote share, missing parameter'
+					'server can not add federated share, missing parameter'
 				);
 			}
 			if (!\OCP\Util::isValidFileName($name)) {
@@ -246,7 +247,7 @@ class OcmController extends Controller {
 			);
 		} catch (\Exception $e) {
 			$this->logger->error(
-				"server can not add remote share, {$e->getMessage()}",
+				"server can not add federated share, {$e->getMessage()}",
 				['app' => 'federatefilesharing']
 			);
 			return new JSONResponse(
@@ -277,15 +278,16 @@ class OcmController extends Controller {
 	 *
 	 * @return JSONResponse
 	 */
-	public function processNotification($notificationType,
-										$resourceType,
-										$providerId,
-										$notification
+	public function processNotification(
+		$notificationType,
+		$resourceType,
+		$providerId,
+		$notification
 	) {
 		try {
 			if (!\is_array($notification)) {
 				throw new BadRequestException(
-					'server can not add remote share, missing parameter'
+					'server can not add federated share, missing parameter'
 				);
 			}
 
@@ -313,14 +315,16 @@ class OcmController extends Controller {
 				case FileNotification::NOTIFICATION_TYPE_SHARE_ACCEPTED:
 					$this->ocmMiddleware->assertOutgoingSharingEnabled();
 					$share = $this->ocmMiddleware->getValidShare(
-						$providerId, $notification['sharedSecret']
+						$providerId,
+						$notification['sharedSecret']
 					);
 					$this->fedShareManager->acceptShare($share);
 					break;
 				case FileNotification::NOTIFICATION_TYPE_SHARE_DECLINED:
 					$this->ocmMiddleware->assertOutgoingSharingEnabled();
 					$share = $this->ocmMiddleware->getValidShare(
-						$providerId, $notification['sharedSecret']
+						$providerId,
+						$notification['sharedSecret']
 					);
 					$this->fedShareManager->declineShare($share);
 					break;
@@ -333,7 +337,8 @@ class OcmController extends Controller {
 						]
 					);
 					$share = $this->ocmMiddleware->getValidShare(
-						$providerId, $notification['sharedSecret']
+						$providerId,
+						$notification['sharedSecret']
 					);
 
 					// don't allow to share a file back to the owner
@@ -344,7 +349,8 @@ class OcmController extends Controller {
 					$this->ocmMiddleware->assertSharingPermissionSet($share);
 
 					$reShare = $this->fedShareManager->reShare(
-						$share, $notification['senderId'],
+						$share,
+						$notification['senderId'],
 						$notification['shareWith']
 					);
 					return new JSONResponse(
@@ -362,7 +368,8 @@ class OcmController extends Controller {
 						]
 					);
 					$share = $this->ocmMiddleware->getValidShare(
-						$providerId, $notification['sharedSecret']
+						$providerId,
+						$notification['sharedSecret']
 					);
 					$this->fedShareManager->updateOcmPermissions(
 						$share,
@@ -371,7 +378,8 @@ class OcmController extends Controller {
 					break;
 				case FileNotification::NOTIFICATION_TYPE_SHARE_UNSHARED:
 					$this->fedShareManager->unshare(
-						$providerId, $notification['sharedSecret']
+						$providerId,
+						$notification['sharedSecret']
 					);
 					break;
 				case FileNotification::NOTIFICATION_TYPE_RESHARE_UNDO:
@@ -380,13 +388,6 @@ class OcmController extends Controller {
 						['message' => "Notification of type {$notificationType} is not supported"],
 						Http::STATUS_NOT_IMPLEMENTED
 					);
-
-					// owner or sender unshared a resource
-					$share = $this->ocmMiddleware->getValidShare(
-						$providerId, $notification['sharedSecret']
-					);
-					$this->fedShareManager->undoReshare($share);
-					break;
 				default:
 					return new JSONResponse(
 						['message' => "Notification of type {$notificationType} is not supported"],

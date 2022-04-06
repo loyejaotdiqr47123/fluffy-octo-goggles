@@ -39,6 +39,7 @@
 		'{{#hasDetails}}' +
 		'<div class="version-details">' +
 		'<span class="size has-tooltip" title="{{altSize}}">{{humanReadableSize}}</span>' +
+		'<span title="{{editedBy}}">{{editedByName}}</span>' +
 		'</div>' +
 		'{{/hasDetails}}' +
 		'</div>' +
@@ -132,7 +133,7 @@
 					fileInfoModel.trigger('busy', fileInfoModel, false);
 					self.$el.find('.versions').removeClass('hidden');
 					self._toggleLoading(false);
-					OC.Notification.show(t('files_version', 'Failed to revert {file} to revision {timestamp}.', 
+					OC.Notification.show(t('files_versions', 'Failed to revert {file} to revision {timestamp}.',
 						{
 							file: versionModel.getFullPath(),
 							timestamp: OC.Util.formatDate(versionModel.get('timestamp') * 1000)
@@ -213,7 +214,9 @@
 				revertIconUrl: OC.imagePath('core', 'actions/history'),
 				previewUrl: getPreviewUrl(version),
 				revertLabel: t('files_versions', 'Restore'),
-				canRevert: (this.collection.getFileInfo().get('permissions') & OC.PERMISSION_UPDATE) !== 0
+				canRevert: (this.collection.getFileInfo().get('permissions') & OC.PERMISSION_UPDATE) !== 0,
+				editedBy: version.has('editedBy'),
+        		editedByName: version.has('editedByName')
 			}, version.attributes);
 		},
 

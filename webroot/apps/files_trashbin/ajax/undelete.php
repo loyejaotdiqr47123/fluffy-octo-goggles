@@ -41,7 +41,7 @@ if (isset($_POST['allfiles']) && (string)$_POST['allfiles'] === 'true') {
 	if ($dir === '' || $dir === '/') {
 		$dirListing = false;
 	}
-	foreach (OCA\Files_Trashbin\Helper::getTrashFiles($dir, \OCP\User::getUser()) as $file) {
+	foreach (OCA\Files_Trashbin\Helper::getTrashFiles($dir, \OCP\User::getUser(), '', false, false) as $file) {
 		$fileName = $file['name'];
 		if (!$dirListing) {
 			$fileName .= '.d' . $file['mtime'];
@@ -71,7 +71,7 @@ foreach ($list as $file) {
 
 	if (!OCA\Files_Trashbin\Trashbin::restore($path, $filename, $timestamp)) {
 		$error[] = $filename;
-		\OCP\Util::writeLog('trashbin', 'can\'t restore ' . $filename, \OCP\Util::DEBUG);
+		\OCP\Util::writeLog('files_trashbin', 'can\'t restore ' . $filename, \OCP\Util::DEBUG);
 	} else {
 		$success[$i]['filename'] = $file;
 		$success[$i]['timestamp'] = $timestamp;

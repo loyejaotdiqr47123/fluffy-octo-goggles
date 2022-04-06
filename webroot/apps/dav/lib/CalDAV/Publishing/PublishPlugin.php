@@ -35,7 +35,7 @@ use Sabre\HTTP\RequestInterface;
 use Sabre\HTTP\ResponseInterface;
 
 class PublishPlugin extends ServerPlugin {
-	const NS_CALENDARSERVER = 'http://calendarserver.org/ns/';
+	public const NS_CALENDARSERVER = 'http://calendarserver.org/ns/';
 
 	/**
 	 * Reference to SabreDAV server object.
@@ -181,6 +181,7 @@ class PublishPlugin extends ServerPlugin {
 
 			// If there's no ACL support, we allow everything
 			if ($acl) {
+				'@phan-var \OCA\DAV\Connector\Sabre\DavAclPlugin $acl';
 				$acl->checkPrivileges($path, '{DAV:}write');
 			}
 
@@ -209,6 +210,7 @@ class PublishPlugin extends ServerPlugin {
 
 			// If there's no ACL support, we allow everything
 			if ($acl) {
+				'@phan-var \OCA\DAV\Connector\Sabre\DavAclPlugin $acl';
 				$acl->checkPrivileges($path, '{DAV:}write');
 			}
 

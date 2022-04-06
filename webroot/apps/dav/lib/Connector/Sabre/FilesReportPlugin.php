@@ -42,9 +42,9 @@ use Sabre\DAV\Xml\Element\Response;
 class FilesReportPlugin extends ServerPlugin {
 
 	// namespace
-	const NS_OWNCLOUD = 'http://owncloud.org/ns';
-	const REPORT_NAME            = '{http://owncloud.org/ns}filter-files';
-	const SYSTEMTAG_PROPERTYNAME = '{http://owncloud.org/ns}systemtag';
+	public const NS_OWNCLOUD = 'http://owncloud.org/ns';
+	public const REPORT_NAME            = '{http://owncloud.org/ns}filter-files';
+	public const SYSTEMTAG_PROPERTYNAME = '{http://owncloud.org/ns}systemtag';
 
 	/**
 	 * Reference to main server object
@@ -105,14 +105,15 @@ class FilesReportPlugin extends ServerPlugin {
 	 * @param IGroupManager $groupManager
 	 * @param Folder $userFolder
 	 */
-	public function __construct(Tree $tree,
-								View $view,
-								ISystemTagManager $tagManager,
-								ISystemTagObjectMapper $tagMapper,
-								ITagManager $fileTagger,
-								IUserSession $userSession,
-								IGroupManager $groupManager,
-								Folder $userFolder
+	public function __construct(
+		Tree $tree,
+		View $view,
+		ISystemTagManager $tagManager,
+		ISystemTagObjectMapper $tagMapper,
+		ITagManager $fileTagger,
+		IUserSession $userSession,
+		IGroupManager $groupManager,
+		Folder $userFolder
 	) {
 		$this->tree = $tree;
 		$this->fileView = $view;
@@ -190,7 +191,7 @@ class FilesReportPlugin extends ServerPlugin {
 			try {
 				$resultFileIds = $this->processFilterRules($filterRules);
 			} catch (TagNotFoundException $e) {
-				throw new PreconditionFailed('Cannot filter by non-existing tag', 0, $e);
+				throw new PreconditionFailed('Cannot filter by nonexistent tag');
 			}
 
 			// pre-slice the results if needed for pagination to not waste
@@ -361,7 +362,8 @@ class FilesReportPlugin extends ServerPlugin {
 		$results = [];
 		foreach ($fileIds as $fileId) {
 			$entries = $folder->getById($fileId, true);
-			if (!empty($entries)) {
+			$entry = $entries[0] ?? null;
+			if ($entry) {
 				$entry = $entries[0];
 				$node = $this->makeSabreNode($entry);
 				if ($node) {

@@ -21,7 +21,9 @@
 
 namespace OCA\FederatedFileSharing\AppInfo;
 
+use GuzzleHttp\Exception\ServerException;
 use OCA\FederatedFileSharing\AddressHandler;
+use OCA\FederatedFileSharing\Command\PollIncomingShares;
 use OCA\FederatedFileSharing\Controller\OcmController;
 use OCA\FederatedFileSharing\DiscoveryManager;
 use OCA\FederatedFileSharing\FederatedShareProvider;
@@ -33,8 +35,10 @@ use OCA\FederatedFileSharing\Ocm\NotificationManager;
 use OCA\FederatedFileSharing\Ocm\Permissions;
 use OCA\FederatedFileSharing\TokenHandler;
 use OCP\AppFramework\App;
+use OCP\AppFramework\Http;
 use OCP\Share\Events\AcceptShare;
 use OCP\Share\Events\DeclineShare;
+use OCP\Util;
 
 class Application extends App {
 
@@ -157,6 +161,28 @@ class Application extends App {
 				return new Permissions();
 			}
 		);
+
+		$container->registerService(
+			PollIncomingShares::class,
+			function ($c) use ($server) {
+				if ($server->getAppManager()->isEnabledForUser('files_sharing')) {
+					$sharingApp = new \OCA\Files_Sharing\AppInfo\Application();
+					$externalManager = $sharingApp->getContainer()->query('ExternalManager');
+					$externalMountProvider = $sharingApp->getContainer()->query('ExternalMountProvider');
+				} else {
+					$externalManager = null;
+					$externalMountProvider = null;
+				}
+
+				return new PollIncomingShares(
+					$server->getDatabaseConnection(),
+					$server->getUserManager(),
+					\OC\Files\Filesystem::getLoader(),
+					$externalManager,
+					$externalMountProvider
+				);
+			}
+		);
 	}
 
 	/**
@@ -200,6 +226,7 @@ class Application extends App {
 
 		$this->federatedShareProvider = new FederatedShareProvider(
 			\OC::$server->getDatabaseConnection(),
+			\OC::$server->getEventDispatcher(),
 			$addressHandler,
 			$notifications,
 			$tokenHandler,
@@ -235,12 +262,30 @@ class Application extends App {
 			function (DeclineShare $event) use ($container) {
 				/** @var Notifications $notifications */
 				$notifications = $container->query('Notifications');
-				$notifications->sendDeclineShare(
-					$event->getRemote(),
-					$event->getRemoteId(),
-					$event->getShareToken()
-				);
+				try {
+					$notifications->sendDeclineShare(
+						$event->getRemote(),
+						$event->getRemoteId(),
+						$event->getShareToken()
+					);
+				} catch (ServerException $e) {
+					// ownCloud lower than 10.2 responded with Internal Server Error
+					// on declining nonexistent share. It can't be caught outside the closure
+					if ($e->getCode() !== Http::STATUS_INTERNAL_SERVER_ERROR) {
+						throw $e;
+					}
+				}
 			}
 		);
+
+		if ($this->getFederatedShareProvider()->isOutgoingServer2serverShareEnabled()) {
+			// add 'Add to your ownCloud' button to public pages
+			$eventDispatcher->addListener(
+				'OCA\Files_Sharing::loadAdditionalScripts',
+				static function () {
+					Util::addScript('federatedfilesharing', 'public');
+				}
+			);
+		}
 	}
 }

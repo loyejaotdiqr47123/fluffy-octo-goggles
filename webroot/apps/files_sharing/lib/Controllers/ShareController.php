@@ -50,6 +50,7 @@ use OCP\IRequest;
 use OCP\ISession;
 use OCP\IURLGenerator;
 use OCP\IUserManager;
+use OCP\IUserSession;
 use OCP\Share;
 use OCP\Share\Exceptions\ShareNotFound;
 use OCP\Template;
@@ -81,6 +82,8 @@ class ShareController extends Controller {
 	protected $previewManager;
 	/** @var IRootFolder */
 	protected $rootFolder;
+	/** @var IUserSession */
+	protected $userSession;
 	/** @var EventDispatcher */
 	protected $eventDispatcher;
 
@@ -98,20 +101,24 @@ class ShareController extends Controller {
 	 * @param ISession $session
 	 * @param IPreview $previewManager
 	 * @param IRootFolder $rootFolder
+	 * @param IUserSession $userSession
 	 * @param EventDispatcher $eventDispatcher
 	 */
-	public function __construct($appName,
-								IRequest $request,
-								IConfig $config,
-								IURLGenerator $urlGenerator,
-								IUserManager $userManager,
-								ILogger $logger,
-								\OCP\Activity\IManager $activityManager,
-								\OCP\Share\IManager $shareManager,
-								ISession $session,
-								IPreview $previewManager,
-								IRootFolder $rootFolder,
-								EventDispatcher $eventDispatcher) {
+	public function __construct(
+		$appName,
+		IRequest $request,
+		IConfig $config,
+		IURLGenerator $urlGenerator,
+		IUserManager $userManager,
+		ILogger $logger,
+		\OCP\Activity\IManager $activityManager,
+		\OCP\Share\IManager $shareManager,
+		ISession $session,
+		IPreview $previewManager,
+		IRootFolder $rootFolder,
+		IUserSession $userSession,
+		EventDispatcher $eventDispatcher
+	) {
 		parent::__construct($appName, $request);
 
 		$this->config = $config;
@@ -124,6 +131,7 @@ class ShareController extends Controller {
 		$this->previewManager = $previewManager;
 		$this->rootFolder = $rootFolder;
 		$this->eventDispatcher = $eventDispatcher;
+		$this->userSession = $userSession;
 	}
 
 	/**
@@ -164,6 +172,9 @@ class ShareController extends Controller {
 		$authenticate = $this->linkShareAuth($share, $password);
 
 		if ($authenticate === true) {
+			if (!$this->userSession->isLoggedIn()) {
+				$this->session->regenerateId();
+			}
 			return new RedirectResponse($this->urlGenerator->linkToRoute('files_sharing.sharecontroller.showShare', ['token' => $token]));
 		}
 
@@ -182,6 +193,8 @@ class ShareController extends Controller {
 	 * @return bool
 	 */
 	private function linkShareAuth(\OCP\Share\IShare $share, $password = null) {
+		$beforeEvent = new GenericEvent(null, ['shareObject' => $share]);
+		$this->eventDispatcher->dispatch('share.beforelinkauth', $beforeEvent);
 		if ($password !== null) {
 			if ($this->shareManager->checkPassword($share, $password)) {
 				$this->session->set('public_link_authenticated', (string)$share->getId());
@@ -196,6 +209,8 @@ class ShareController extends Controller {
 				return false;
 			}
 		}
+		$afterEvent = new GenericEvent(null, ['shareObject' => $share]);
+		$this->eventDispatcher->dispatch('share.afterlinkauth', $afterEvent);
 		return true;
 	}
 
@@ -235,9 +250,11 @@ class ShareController extends Controller {
 
 		if ($share instanceof \OCP\Share\IShare) {
 			$cloneShare = clone $share;
-			$publicShareLinkAccessEvent = new GenericEvent(null,
+			$publicShareLinkAccessEvent = new GenericEvent(
+				null,
 				['shareObject' => $cloneShare, 'errorCode' => $errorCode,
-					'errorMessage' => $errorMessage]);
+					'errorMessage' => $errorMessage]
+			);
 			$this->eventDispatcher->dispatch('share.linkaccess', $publicShareLinkAccessEvent);
 		}
 
@@ -280,8 +297,10 @@ class ShareController extends Controller {
 
 		// Share is password protected - check whether the user is permitted to access the share
 		if ($share->getPassword() !== null && !$this->linkShareAuth($share)) {
-			return new RedirectResponse($this->urlGenerator->linkToRoute('files_sharing.sharecontroller.authenticate',
-				['token' => $token]));
+			return new RedirectResponse($this->urlGenerator->linkToRoute(
+				'files_sharing.sharecontroller.authenticate',
+				['token' => $token]
+			));
 		}
 
 		if (!$this->validateShare($share)) {
@@ -360,7 +379,8 @@ class ShareController extends Controller {
 			}
 		}
 
-		$shareTmpl['canDownload'] = !!($share->getPermissions() & \OCP\Constants::PERMISSION_READ > 0);
+		$shareTmpl['canDownload'] = ($share->getPermissions() & \OCP\Constants::PERMISSION_READ) > 0;
+		$shareTmpl['sharePermission'] = $share->getPermissions();
 		$shareTmpl['downloadURL'] = $this->urlGenerator->linkToRouteAbsolute('files_sharing.sharecontroller.downloadShare', ['token' => $token]);
 		$shareTmpl['shareUrl'] = $this->urlGenerator->linkToRouteAbsolute('files_sharing.sharecontroller.showShare', ['token' => $token]);
 		$shareTmpl['maxSizeAnimateGif'] = $this->config->getSystemValue('max_filesize_animated_gifs_public_sharing', 10);
@@ -368,8 +388,10 @@ class ShareController extends Controller {
 		$shareTmpl['previewMaxX'] = $this->config->getSystemValue('preview_max_x', 1024);
 		$shareTmpl['previewMaxY'] = $this->config->getSystemValue('preview_max_y', 1024);
 		if ($shareTmpl['previewSupported']) {
-			$shareTmpl['previewImage'] = $this->urlGenerator->linkToRouteAbsolute('core_ajax_public_preview',
-				['x' => 200, 'y' => 200, 'file' => $shareTmpl['directory_path'], 't' => $shareTmpl['dirToken']]);
+			$shareTmpl['previewImage'] = $this->urlGenerator->linkToRouteAbsolute(
+				'core_ajax_public_preview',
+				['x' => 200, 'y' => 200, 'file' => $shareTmpl['directory_path'], 't' => $shareTmpl['dirToken']]
+			);
 		} else {
 			$shareTmpl['previewImage'] = $this->urlGenerator->getAbsoluteURL($this->urlGenerator->imagePath('core', 'favicon-fb.png'));
 		}
@@ -395,6 +417,7 @@ class ShareController extends Controller {
 	 * @param string $path
 	 * @param string $downloadStartSecret
 	 * @return NotFoundResponse|RedirectResponse|void
+	 * @throws \Exception
 	 */
 	public function downloadShare($token, $files = null, $path = '', $downloadStartSecret = '') {
 		\OC_User::setIncognitoMode(true);
@@ -403,8 +426,10 @@ class ShareController extends Controller {
 
 		// Share is password protected - check whether the user is permitted to access the share
 		if ($share->getPassword() !== null && !$this->linkShareAuth($share)) {
-			return new RedirectResponse($this->urlGenerator->linkToRoute('files_sharing.sharecontroller.authenticate',
-				['token' => $token]));
+			return new RedirectResponse($this->urlGenerator->linkToRoute(
+				'files_sharing.sharecontroller.authenticate',
+				['token' => $token]
+			));
 		}
 
 		if (($share->getPermissions() & \OCP\Constants::PERMISSION_READ) === 0) {
@@ -525,16 +550,21 @@ class ShareController extends Controller {
 		}
 
 		// download selected files
-		if ($files !== null && $files !== '') {
-			// FIXME: The exit is required here because otherwise the AppFramework is trying to add headers as well
-			// after dispatching the request which results in a "Cannot modify header information" notice.
-			OC_Files::get($originalSharePath, $files_list, $server_params);
-			exit();
-		} else {
-			// FIXME: The exit is required here because otherwise the AppFramework is trying to add headers as well
-			// after dispatching the request which results in a "Cannot modify header information" notice.
-			OC_Files::get(\dirname($originalSharePath), \basename($originalSharePath), $server_params);
-			exit();
+
+		try {
+			if ($files !== null && $files !== '') {
+				// FIXME: The exit is required here because otherwise the AppFramework is trying to add headers as well
+				// after dispatching the request which results in a "Cannot modify header information" notice.
+				OC_Files::get($originalSharePath, $files_list, $server_params);
+				exit();
+			} else {
+				// FIXME: The exit is required here because otherwise the AppFramework is trying to add headers as well
+				// after dispatching the request which results in a "Cannot modify header information" notice.
+				OC_Files::get(\dirname($originalSharePath), \basename($originalSharePath), $server_params);
+				exit();
+			}
+		} catch (\Exception $e) {
+			throw new \Exception();
 		}
 	}
 }

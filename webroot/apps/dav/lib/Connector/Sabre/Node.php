@@ -38,6 +38,7 @@ use OC\Files\Mount\MoveableMount;
 use OC\Lock\Persistent\Lock;
 use OCA\DAV\Connector\Sabre\Exception\Forbidden;
 use OCA\DAV\Connector\Sabre\Exception\InvalidPath;
+use OCA\Files_Sharing\SharedMount;
 use OCP\Files\ForbiddenException;
 use OCP\Files\Storage\IPersistentLockingStorage;
 use OCP\Share\Exceptions\ShareNotFound;
@@ -123,17 +124,17 @@ abstract class Node implements \Sabre\DAV\INode {
 	 * @throws InvalidPath
 	 */
 	public function setName($name) {
-
-		// rename is only allowed if the update privilege is granted
-		if (!$this->info->isUpdateable()) {
+		$mountPoint = $this->info->getMountPoint();
+		// rename of a shared mount should always be possible
+		if (!($mountPoint instanceof SharedMount) && !$this->info->isUpdateable()) {
 			throw new \Sabre\DAV\Exception\Forbidden();
 		}
 
 		// verify path of the source
 		$this->verifyPath();
 
-		list($parentPath, ) = \Sabre\HTTP\URLUtil::splitPath($this->path);
-		list(, $newName) = \Sabre\HTTP\URLUtil::splitPath($name);
+		list($parentPath, ) = \Sabre\Uri\split($this->path);
+		list(, $newName) = \Sabre\Uri\split($name);
 
 		// verify path of target
 		if (\OC\Files\Filesystem::isForbiddenFileOrDir($parentPath . '/' . $newName)) {
@@ -149,7 +150,10 @@ abstract class Node implements \Sabre\DAV\INode {
 		$newPath = $parentPath . '/' . $newName;
 
 		try {
-			$this->fileView->rename($this->path, $newPath);
+			$result = $this->fileView->rename($this->path, $newPath);
+			if ($result === false) {
+				throw new Forbidden('Rename operation failed');
+			}
 		} catch (ForbiddenException $ex) {
 			throw new Forbidden($ex->getMessage(), $ex->getRetry());
 		}
@@ -214,12 +218,20 @@ abstract class Node implements \Sabre\DAV\INode {
 	}
 
 	/**
-	 * Returns the size of the node, in bytes
+	 * Returns the size of the node, in bytes, or null if the size is unknown
+	 * (GoogleDrive documents returns \OCP\Files\FileInfo::SPACE_UNKNOWN for their
+	 * size because the actual size value isn't returned by google. This function
+	 * will return null in this case)
 	 *
-	 * @return integer
+	 * @return integer|null
 	 */
 	public function getSize() {
-		return $this->info->getSize();
+		$size = $this->info->getSize();
+		if ($size < 0) {
+			return null;
+		} else {
+			return $size;
+		}
 	}
 
 	/**
@@ -273,6 +285,7 @@ abstract class Node implements \Sabre\DAV\INode {
 
 		if ($storage->instanceOfStorage('\OCA\Files_Sharing\SharedStorage')) {
 			/** @var \OCA\Files_Sharing\SharedStorage $storage */
+			'@phan-var \OCA\Files_Sharing\SharedStorage $storage';
 			$permissions = (int)$storage->getShare()->getPermissions();
 		} else {
 			$permissions = $storage->getPermissions($path);

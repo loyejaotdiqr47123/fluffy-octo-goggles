@@ -22,9 +22,7 @@
 
 namespace OCA\Files_Trashbin\Command;
 
-use OCA\Files_Trashbin\Expiration;
-use OCA\Files_Trashbin\Helper;
-use OCA\Files_Trashbin\Trashbin;
+use OCA\Files_Trashbin\TrashExpiryManager;
 use OCP\IUser;
 use OCP\IUserManager;
 use Symfony\Component\Console\Command\Command;
@@ -36,10 +34,10 @@ use Symfony\Component\Console\Output\OutputInterface;
 class ExpireTrash extends Command {
 
 	/**
-	 * @var Expiration
+	 * @var TrashExpiryManager
 	 */
-	private $expiration;
-	
+	private $trashExpiryManager;
+
 	/**
 	 * @var IUserManager
 	 */
@@ -47,14 +45,16 @@ class ExpireTrash extends Command {
 
 	/**
 	 * @param IUserManager|null $userManager
-	 * @param Expiration|null $expiration
+	 * @param TrashExpiryManager|null $trashExpiryManager
 	 */
-	public function __construct(IUserManager $userManager = null,
-								Expiration $expiration = null) {
+	public function __construct(
+		IUserManager $userManager = null,
+		TrashExpiryManager $trashExpiryManager = null
+	) {
 		parent::__construct();
 
 		$this->userManager = $userManager;
-		$this->expiration = $expiration;
+		$this->trashExpiryManager = $trashExpiryManager;
 	}
 
 	protected function configure() {
@@ -69,10 +69,10 @@ class ExpireTrash extends Command {
 	}
 
 	protected function execute(InputInterface $input, OutputInterface $output) {
-		$maxAge = $this->expiration->getMaxAgeAsTimestamp();
-		if (!$maxAge) {
+		$retentionEnabled = $this->trashExpiryManager->retentionEnabled();
+		if (!$retentionEnabled) {
 			$output->writeln("Auto expiration is configured - expiration will be handled automatically.");
-			return;
+			return 1;
 		}
 
 		$users = $input->getArgument('user_id');
@@ -96,6 +96,7 @@ class ExpireTrash extends Command {
 			$p->finish();
 			$output->writeln('');
 		}
+		return 0;
 	}
 
 	public function expireTrashForUser(IUser $user) {
@@ -103,8 +104,8 @@ class ExpireTrash extends Command {
 		if (!$this->setupFS($uid)) {
 			return;
 		}
-		$dirContent = Helper::getTrashFiles('/', $uid, 'mtime');
-		Trashbin::deleteExpiredFiles($dirContent, $uid);
+
+		$this->trashExpiryManager->expireTrashByRetention($uid);
 	}
 
 	/**

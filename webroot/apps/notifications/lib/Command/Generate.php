@@ -44,7 +44,7 @@ class Generate extends Command {
 	/**
 	 * @param IManager $manager
 	 */
-	function __construct(IManager $manager, IURLGenerator $urlGenerator, IGroupManager $groupManager) {
+	public function __construct(IManager $manager, IURLGenerator $urlGenerator, IGroupManager $groupManager) {
 		parent::__construct();
 		$this->manager = $manager;
 		$this->urlGenerator = $urlGenerator;
@@ -63,6 +63,10 @@ class Generate extends Command {
 		;
 	}
 
+	/**
+	 * @param InputInterface $input
+	 * @param OutputInterface $output
+	 */
 	protected function execute(InputInterface $input, OutputInterface $output) {
 		$user = $input->getOption('user');
 		$group = $input->getOption('group');
@@ -79,15 +83,15 @@ class Generate extends Command {
 			if ($group === null) {
 				throw new \Exception('Group is not known.');
 			}
-			$users = array_map(function(IUser $u) {
+			$users = \array_map(function (IUser $u) {
 				return $u->getUID();
 			}, $group->getUsers());
 		}
 
-		$progress = new ProgressBar($output, count($users));
+		$progress = new ProgressBar($output, \count($users));
 		$progress->start();
-		foreach($users as $user) {
-			$time = time();
+		foreach ($users as $user) {
+			$time = \time();
 			$datetime = new \DateTime();
 			$datetime->setTimestamp($time);
 
@@ -102,8 +106,8 @@ class Generate extends Command {
 				$notification->setLink($link);
 			}
 
-			$notification->setObject('admin-notification', $time);
-			if (method_exists($notification, 'setIcon')) {
+			$notification->setObject('admin-notification', (string)$time);
+			if (\method_exists($notification, 'setIcon')) {
 				$notification->setIcon($this->urlGenerator->imagePath('notifications', 'icon.png'));
 			}
 
@@ -112,5 +116,6 @@ class Generate extends Command {
 			$progress->advance();
 		}
 		$progress->finish();
+		return 0;
 	}
 }

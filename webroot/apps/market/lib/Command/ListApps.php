@@ -28,7 +28,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
 class ListApps extends Command {
-
 	private $marketService;
 
 	public function __construct(MarketService $marketService) {
@@ -50,12 +49,13 @@ class ListApps extends Command {
 			return 1;
 		}
 
-		usort($apps, function ($a, $b) {
-			return strcmp($a['id'], $b['id']);
+		\usort($apps, function ($a, $b) {
+			return \strcmp($a['id'], $b['id']);
 		});
 
 		foreach ($apps as $app) {
 			$output->writeln("{$app['id']}");
 		}
+		return 0;
 	}
 }

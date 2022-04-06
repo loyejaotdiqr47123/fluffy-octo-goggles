@@ -87,12 +87,12 @@ class UpgradeApp extends Command {
 		$isMajorUpdateAllowed = (bool) $input->getOption('major');
 
 		$localPackagesArray = $input->getOption('local');
-		$localPackagesArray = array_unique($localPackagesArray);
-		if (count($localPackagesArray)) {
+		$localPackagesArray = \array_unique($localPackagesArray);
+		if (\count($localPackagesArray)) {
 			foreach ($localPackagesArray as $localPackage) {
+				$appInfo = $this->marketService->readAppPackage($localPackage);
+				$appId = $appInfo['id'];
 				try {
-					$appInfo = $this->marketService->readAppPackage($localPackage);
-					$appId = $appInfo['id'];
 					if ($this->marketService->isAppInstalled($appId)) {
 						$installedAppInfo = $this->marketService->getInstalledAppInfo($appId);
 						$currentVersion = (string) $installedAppInfo['version'];
@@ -127,23 +127,23 @@ class UpgradeApp extends Command {
 				if ($info['major'] !== false) {
 					$versions[] = "major:{$info['major']}";
 				}
-				$versionStr = implode(', ', $versions);
+				$versionStr = \implode(', ', $versions);
 				$output->writeln("$name : $versionStr");
 			}
 			return $this->exitCode;
 		}
 		$appIds = $input->getArgument('ids');
 		if ($input->getOption('all')) {
-			$appIds = array_map(
+			$appIds = \array_map(
 				function ($elem) {
 					return $elem['id'];
 				},
 				$this->marketService->getUpdates()
 			);
 		}
-		$appIds = array_unique($appIds);
+		$appIds = \array_unique($appIds);
 
-		if (!count($appIds)) {
+		if (!\count($appIds)) {
 			$output->writeln("No appId or path to a local package specified. Nothing to do.");
 			return $this->exitCode;
 		}

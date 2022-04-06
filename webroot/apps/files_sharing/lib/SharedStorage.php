@@ -262,9 +262,9 @@ class SharedStorage extends \OC\Files\Storage\Wrapper\Jail implements ISharedSto
 	public function rename($path1, $path2) {
 		$isPartFile = \pathinfo($path1, PATHINFO_EXTENSION) === 'part';
 		$targetExists = $this->file_exists($path2);
-		$sameFodler = \dirname($path1) === \dirname($path2);
+		$sameFolder = \dirname($path1) === \dirname($path2);
 
-		if ($targetExists || ($sameFodler && !$isPartFile)) {
+		if ($targetExists || ($sameFolder && !$isPartFile)) {
 			if (!$this->isUpdatable('')) {
 				return false;
 			}
@@ -462,8 +462,13 @@ class SharedStorage extends \OC\Files\Storage\Wrapper\Jail implements ISharedSto
 		$locks = parent::getLocks($this->getSourcePath($internalPath), $returnChildLocks);
 		return \array_map(function (ILock $lock) {
 			// TODO: if path starts with rootpath
+			/* @phan-suppress-next-line PhanUndeclaredMethod */
 			$mountedPath = \substr($lock->getPath(), \strlen($this->rootPath)+1);
+			// FixMe: setDavUserId does not seem to exist anywhere
+			/* @phan-suppress-next-line PhanUndeclaredMethod */
 			$lock->setDavUserId($this->user);
+			// FixMe: setAbsoluteDavPath does not seem to exist anywhere
+			/* @phan-suppress-next-line PhanUndeclaredMethod */
 			$lock->setAbsoluteDavPath($this->getMountPoint() . '/' .$mountedPath);
 			return $lock;
 		}, $locks);
@@ -474,6 +479,6 @@ class SharedStorage extends \OC\Files\Storage\Wrapper\Jail implements ISharedSto
 	}
 
 	public function unlockNodePersistent($internalPath, array $lockInfo) {
-		parent::unlockNodePersistent($this->getSourcePath($internalPath), $lockInfo);
+		return parent::unlockNodePersistent($this->getSourcePath($internalPath), $lockInfo);
 	}
 }

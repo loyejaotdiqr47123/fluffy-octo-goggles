@@ -50,23 +50,25 @@ class CheckUpdateBackgroundJob extends TimedJob {
 	/** @var IURLGenerator */
 	private $urlGenerator;
 
-	/** @var string[] */
+	/** @var bool|string[] */
 	private $users;
 
 	/**
-	 * @param IConfig|null $config
-	 * @param ITimeFactory|null $timeFactory
+	 * @param IConfig $config
+	 * @param ITimeFactory $timeFactory
 	 * @param IManager $notificationManager
 	 * @param IGroupManager $groupManager
 	 * @param MarketService $marketService
 	 * @param IURLGenerator $urlGenerator
 	 */
-	public function __construct(IConfig $config,
-								ITimeFactory $timeFactory,
-								IManager $notificationManager,
-								IGroupManager $groupManager,
-								MarketService $marketService,
-								IURLGenerator $urlGenerator) {
+	public function __construct(
+		IConfig $config,
+		ITimeFactory $timeFactory,
+		IManager $notificationManager,
+		IGroupManager $groupManager,
+		MarketService $marketService,
+		IURLGenerator $urlGenerator
+	) {
 		// Run daily
 		$this->setInterval(60 * 60 * 24);
 
@@ -79,13 +81,13 @@ class CheckUpdateBackgroundJob extends TimedJob {
 	}
 
 	/**
-	 * @param $argument
+	 * @param string $argument
 	 */
 	protected function run($argument) {
 		$updates = $this->marketService->getUpdates();
 
 		foreach ($updates as $appId => $appInfo) {
-			$url = $this->urlGenerator->linkToRouteAbsolute(
+			$url = $this->urlGenerator->linkToRoute(
 				'market.page.index'
 			);
 			$url .= '#/app/' . $appId;
@@ -110,7 +112,7 @@ class CheckUpdateBackgroundJob extends TimedJob {
 		if ($lastNotification === $version) {
 			// We already notified about this update
 			return;
-		} else if ($lastNotification !== false) {
+		} elseif ($lastNotification !== false) {
 			// Delete old updates
 			$this->deleteOutdatedNotifications($app, $lastNotification);
 		}
@@ -120,7 +122,7 @@ class CheckUpdateBackgroundJob extends TimedJob {
 			->setDateTime(
 				\DateTime::createFromFormat(
 					'U',
-					$this->timeFactory->getTime()
+					\strval($this->timeFactory->getTime())
 				)
 			)
 			->setObject($app, $version)
@@ -143,7 +145,7 @@ class CheckUpdateBackgroundJob extends TimedJob {
 			return $this->users;
 		}
 
-		$notifyGroups = json_decode($this->config->getAppValue('market', 'notify_groups', '["admin"]'), true);
+		$notifyGroups = \json_decode($this->config->getAppValue('market', 'notify_groups', '["admin"]'), true);
 		$this->users = [];
 		foreach ($notifyGroups as $group) {
 			$groupToNotify = $this->groupManager->get($group);
@@ -154,7 +156,7 @@ class CheckUpdateBackgroundJob extends TimedJob {
 			}
 		}
 
-		$this->users = array_keys($this->users);
+		$this->users = \array_keys($this->users);
 
 		return $this->users;
 	}
@@ -171,5 +173,4 @@ class CheckUpdateBackgroundJob extends TimedJob {
 			->setObject($app, $version);
 		$this->notificationManager->markProcessed($notification);
 	}
-
 }
